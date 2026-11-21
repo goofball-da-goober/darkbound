@@ -913,6 +913,37 @@ if (navigator.xr) {
 renderer.xr.addEventListener('sessionstart', () => { vrStart.hidden = true; });
 renderer.xr.addEventListener('sessionend', () => { if (navigator.xr) vrStart.hidden = false; });
 
+
+// ================= IN-VR INFO PANEL (bottom-left of your view, for fixing problems) =================
+const dbg = { errs: [], t: 0, frames: 0, fps: 0 };
+addEventListener('error', e => dbg.errs.push(String(e.message || e).slice(0, 60)));
+addEventListener('unhandledrejection', e => dbg.errs.push('async: ' + String(e.reason?.message || e.reason).slice(0, 52)));
+const dbgCv = document.createElement('canvas'); dbgCv.width = 512; dbgCv.height = 256;
+const dbgTex = new THREE.CanvasTexture(dbgCv); dbgTex.colorSpace = THREE.SRGBColorSpace;
+const dbgPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.12), new THREE.MeshBasicMaterial({ map: dbgTex, transparent: true, depthTest: false, fog: false }));
+dbgPanel.position.set(-0.17, -0.13, -0.5); dbgPanel.renderOrder = 999; camera.add(dbgPanel);
+function updateDbg(dt) {
+  dbg.frames++; dbg.t += dt; if (dbg.t < 0.25) return;
+  dbg.fps = Math.round(dbg.frames / dbg.t); dbg.frames = 0; dbg.t = 0;
+  dbgPanel.visible = renderer.xr.isPresenting;
+  if (!dbgPanel.visible) return;
+  const L = hands.find(h => h.source?.handedness === 'left'), R = hands.find(h => h.source?.handedness === 'right');
+  const hs = h => !h ? 'NONE' : (h.source.gamepad ? 'ctrl' : 'HAND-TRACK') + ' y' + (h.last.y - rig.position.y).toFixed(2) + (h.coll ? ' TOUCH' : '');
+  const lines = [
+    'DARKBOUND INFO   fps ' + dbg.fps,
+    'head ' + camera.position.y.toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
+    'fall ' + vel.y.toFixed(2) + '   space ' + (renderer.xr.getReferenceSpace() ? 'ok' : 'NONE'),
+    'L ' + hs(L), 'R ' + hs(R),
+    dbg.errs.length ? 'ERR ' + dbg.errs[dbg.errs.length - 1] : 'no errors',
+  ];
+  const c = dbgCv.getContext('2d');
+  c.clearRect(0, 0, 512, 256); c.fillStyle = 'rgba(7,4,15,0.85)'; c.fillRect(0, 0, 512, 256);
+  c.strokeStyle = '#5ef2ff'; c.lineWidth = 4; c.strokeRect(2, 2, 508, 252);
+  c.font = 'bold 30px monospace';
+  lines.forEach((l, i) => { c.fillStyle = l.startsWith('ERR') ? '#ff5c8a' : i ? '#e8dcff' : '#ffd447'; c.fillText(l, 14, 38 + i * 40); });
+  dbgTex.needsUpdate = true;
+}
+
 // ================= LOOP =================
 respawn();
 const clock = new THREE.Clock();
@@ -922,7 +953,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t); updateRemotes(dt); updateVoice(); updateLiv(dt); renderLivFeed(dt);
+  updateMyPose(t); updateRemotes(dt); updateVoice(); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
