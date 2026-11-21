@@ -1,11 +1,11 @@
 // Network-first cache so the game still opens if the connection drops (multiplayer still needs internet).
-const CACHE = 'darkbound-v1';
+const CACHE = 'darkbound-v2';
 self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' }) // always ask the server for the newest version
       .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {}); return res; })
       .catch(() => caches.match(e.request))
   );
