@@ -52,7 +52,7 @@ const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
 const HIST = 6;           // frames of velocity history
 const MAX_STEP = 0.3;     // max body move per frame from hands (anti tracking-glitch)
-const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 8, 0, 7 + Math.random() * 2); // spread players out
+const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 4.4, 0, 6.6 + Math.random() * 0.9); // spread players out, clear of the pillars at x=±3.4
 
 // seeded rng so the map is always the same
 let seed = 1337;
