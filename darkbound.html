@@ -703,10 +703,12 @@ function renderFrom(cam, target) { // draw the scene from the camcorder, showing
   const rootV = me.root.visible, headV = me.head.visible, objV = livObj.visible, xrOn = renderer.xr.enabled;
   me.root.visible = true; me.head.visible = true; livObj.visible = false;
   const asp = target ? target.width / target.height : innerWidth / innerHeight; if (cam.aspect !== asp) { cam.aspect = asp; cam.updateProjectionMatrix(); }
-  renderer.xr.enabled = false; renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(null); renderer.xr.enabled = xrOn;
+  const prevRT = renderer.getRenderTarget(); // in VR this is the headset's own framebuffer - must go back to it
+  renderer.xr.enabled = false; renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(prevRT); renderer.xr.enabled = xrOn;
   me.root.visible = rootV; me.head.visible = headV; livObj.visible = objV;
 }
-function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < 1 / 30) return; liv.feedT = 0; renderFrom(livCam, livRT); } // the little screen, 30 fps
+// the camcorder's little screen: 15 fps in VR (lighter on the Quest), 30 on a computer
+function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < (renderer.xr.isPresenting ? 1 / 15 : 1 / 30)) return; liv.feedT = 0; renderFrom(livCam, livRT); } // the little screen, 30 fps
 function takePhoto() {
   try {
     const W = 1600, H = 900, rt = new THREE.WebGLRenderTarget(W, H); rt.texture.colorSpace = THREE.SRGBColorSpace;
