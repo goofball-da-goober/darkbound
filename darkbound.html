@@ -14,6 +14,12 @@
   #hud .sub{color:#b9a3e8;margin-bottom:8px}
   #hud b{color:#ffd447}
   #hud hr{border:0;border-top:1px solid #4a2f80;margin:8px 0}
+  #vrStart{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:radial-gradient(circle at 50% 40%,#24124a,#07040f 70%);padding:24px}
+  #vrStart[hidden]{display:none}
+  #vrStart img{width:min(560px,80vw);border-radius:10px;border:2px solid #9b5cff;box-shadow:0 0 40px #9b5cff66}
+  #vrStart button{font:bold 42px/1 ui-monospace,Consolas,monospace;letter-spacing:6px;color:#07121a;background:#5ef2ff;border:0;border-radius:14px;padding:28px 64px;cursor:pointer;box-shadow:0 0 30px #5ef2ff88}
+  #vrStart button:focus-visible{outline:4px solid #ffd447;outline-offset:4px}
+  #vrStart p{color:#b9a3e8;font-size:20px;margin:0}
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">
@@ -871,6 +877,41 @@ const micLabel = () => ({ off: 'MIC OFF', asking: 'MIC…', on: voice.muted ? 'M
 window.__dbg = { net, remotes, voice, voices, callPeer, rx: 0, tx: 0 };
 drawBoard();
 startNet();
+
+
+// ================= VR-FIRST START (Quest app launches straight into VR) =================
+const vrStart = document.createElement('div');
+vrStart.id = 'vrStart';
+vrStart.innerHTML = '<img src="logo.png" alt="Darkbound"><button id="vrGo">ENTER VR</button><p id="vrMsg">Put your headset on and press the button.</p>';
+vrStart.hidden = true;
+document.body.appendChild(vrStart);
+const isQuestApp = matchMedia('(display-mode: standalone)').matches || document.referrer.startsWith('android-app://');
+let vrStarting = false;
+async function enterVR() {
+  if (vrStarting || renderer.xr.isPresenting || !navigator.xr) return;
+  vrStarting = true;
+  try {
+    const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+    await renderer.xr.setSession(session);
+  } catch (e) {
+    vrStart.hidden = false;
+    document.getElementById('vrMsg').textContent = 'Press ENTER VR to start.';
+  }
+  vrStarting = false;
+}
+document.getElementById('vrGo').addEventListener('click', () => { ensureAudio(); enterVR(); });
+if (navigator.xr) {
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+    if (!ok) return;                                   // a PC: keep the desktop preview and its instructions
+    document.getElementById('hud').style.display = 'none';
+    document.querySelector('#VRButton')?.style.setProperty('display', 'none');
+    vrStart.hidden = false;
+    if (isQuestApp) enterVR();                         // Meta: immersive apps start VR right after loading
+  }).catch(() => { });
+  navigator.xr.addEventListener?.('sessiongranted', enterVR);
+}
+renderer.xr.addEventListener('sessionstart', () => { vrStart.hidden = true; });
+renderer.xr.addEventListener('sessionend', () => { if (navigator.xr) vrStart.hidden = false; });
 
 // ================= LOOP =================
 respawn();
