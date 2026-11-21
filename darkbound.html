@@ -30,9 +30,10 @@
   <b>VR (Quest browser, HTTPS):</b> press ENTER VR.<br>
   • Slap your hands on the ground / walls and push to move<br>
   • Push down hard and fling your arms to jump<br>
-  • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn
+  • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn<br>
+  • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute
   <hr>
-  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front)
+  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute
   <hr>
   <b>Multiplayer:</b> <span id="net">connecting…</span><br>
   Private room: add <b>?room=yourcode</b> to the link
@@ -369,7 +370,7 @@ function snapTurn(angle) {
 }
 
 // ================= VR LOCOMOTION (gorilla-style) =================
-let wasAny = false, turnReady = true, respawnHeld = false;
+let wasAny = false, turnReady = true, respawnHeld = false, muteHeld = false;
 function updateXR(dt) {
   const act = hands.filter(h => h.source);
   for (const h of act) if (h.fresh) { handWorld(h, h.last); pushOut(h.last, HAND_R); h.fresh = false; h.was = false; }
@@ -414,7 +415,7 @@ function updateXR(dt) {
   }
 
   // 4) buttons: right stick snap turn, B/Y respawn
-  let anyRespawn = false;
+  let anyRespawn = false, anyMute = false;
   for (const h of act) {
     const gp = h.source.gamepad; if (!gp) continue;
     if (h.source.handedness === 'right') {
@@ -423,14 +424,17 @@ function updateXR(dt) {
       if (Math.abs(x) < 0.3) turnReady = true;
     }
     if (gp.buttons[5]?.pressed) anyRespawn = true;
+    if (h.source.handedness === 'left' && gp.buttons[4]?.pressed) anyMute = true; // X button
   }
   if (anyRespawn && !respawnHeld) respawn();
   respawnHeld = anyRespawn;
+  if (anyMute && !muteHeld) toggleMic();
+  muteHeld = anyMute;
 }
 
 // ================= DESKTOP PREVIEW =================
 const keys = {};
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') respawn(); if (e.code === 'KeyC') thirdPerson = (thirdPerson + 1) % 3; if (e.code === 'Space') e.preventDefault(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') respawn(); if (e.code === 'KeyC') thirdPerson = (thirdPerson + 1) % 3; if (e.code === 'KeyM') toggleMic(); if (e.code === 'Space') e.preventDefault(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let yaw = 0, pitch = 0, grounded = false;
 renderer.domElement.addEventListener('click', () => { if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock?.(); });
@@ -452,7 +456,7 @@ function updateDesktop(dt) {
   grounded = applyPushToVel(resolveBody());
 }
 
-renderer.xr.addEventListener('sessionstart', () => { ensureAudio(); respawn(); document.getElementById('hud').style.display = 'none'; });
+renderer.xr.addEventListener('sessionstart', () => { ensureAudio(); enableMic(); respawn(); document.getElementById('hud').style.display = 'none'; });
 renderer.xr.addEventListener('sessionend', () => { camera.position.set(0, 1.6, 0); rig.quaternion.identity(); document.getElementById('hud').style.display = ''; });
 addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); thirdCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -474,14 +478,14 @@ const netSign = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.625), new THREE.Mesh
 netSign.position.set(0, 2.6, -6.5); scene.add(netSign);
 let lastBoard = '';
 function drawBoard() {
-  const txt = `ROOM: ${ROOM.toUpperCase()}  •  ${remotes.size + 1} PLAYER${remotes.size ? 'S' : ''}  •  ${net.status.toUpperCase()}`;
+  const txt = `ROOM: ${ROOM.toUpperCase()}  •  ${remotes.size + 1} PLAYER${remotes.size ? 'S' : ''}  •  ${net.status.toUpperCase()}  •  ${typeof voice === 'undefined' ? 'MIC OFF' : micLabel()}`;
   if (txt === lastBoard) return; lastBoard = txt;
   const c = netCv.getContext('2d');
   c.clearRect(0, 0, 1024, 128); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 1024, 128);
   c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 1018, 122);
-  c.fillStyle = '#e8dcff'; c.font = 'bold 44px monospace'; c.textAlign = 'center'; c.fillText(txt, 512, 80);
+  c.fillStyle = '#e8dcff'; c.font = 'bold 34px monospace'; c.textAlign = 'center'; c.fillText(txt, 512, 80);
   netTex.needsUpdate = true;
-  document.getElementById('net').textContent = `room "${ROOM}" — ${remotes.size + 1} player(s) — ${net.status}`;
+  document.getElementById('net').textContent = `room "${ROOM}" — ${remotes.size + 1} player(s) — ${net.status} — ${typeof voice === 'undefined' ? 'mic off' : micLabel().toLowerCase()}`;
 }
 function setStatus(s) { net.status = s; drawBoard(); }
 
@@ -535,7 +539,7 @@ function makeGorilla(color) {
   part(skull, S(0.1), furDark, [0, 0.062, -0.1], [1.5, 0.4, 0.65], 0.01);           // brow ridge
   part(skull, S(0.11), skinLight, [0, -0.025, -0.085], [1.12, 0.95, 0.75], 0.01);   // face plate
   part(skull, S(0.075), skinLight, [0, -0.082, -0.14], [1.3, 0.78, 0.85], 0.01);    // muzzle
-  part(skull, S(0.03, 10, 8), skinDark, [0, -0.108, -0.195], [1.4, 0.25, 0.5], 0);  // mouth
+  const mouth = part(skull, S(0.03, 10, 8), skinDark, [0, -0.108, -0.195], [1.4, 0.25, 0.5], 0); // mouth (opens when they talk)
   for (const s of [-1, 1]) {
     part(skull, S(0.028, 14, 10), toon(0xffffff, 0.35), [s * 0.046, 0.012, -0.168], null, 0.007); // eye
     part(skull, S(0.016, 10, 8), BLACK, [s * 0.046, 0.012, -0.19], null, 0);                       // pupil
@@ -562,6 +566,7 @@ function makeGorilla(color) {
 
   return {
     root, head, body,
+    setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p) {
       head.position.copy(p.h); head.quaternion.copy(p.q);
@@ -583,7 +588,7 @@ function makeGorilla(color) {
 // ---- remote players ----
 const mkPose = () => ({ h: new THREE.Vector3(), q: new THREE.Quaternion(), l: new THREE.Vector3(), lq: new THREE.Quaternion(), r: new THREE.Vector3(), rq: new THREE.Quaternion() });
 function copyPose(a, b) { a.h.copy(b.h); a.q.copy(b.q); a.l.copy(b.l); a.lq.copy(b.lq); a.r.copy(b.r); a.rq.copy(b.rq); }
-function removeRemote(id) { const r = remotes.get(id); if (r) { scene.remove(r.g.root); remotes.delete(id); drawBoard(); } }
+function removeRemote(id) { const r = remotes.get(id); if (r) { if (r.pid) dropVoice(r.pid); scene.remove(r.g.root); remotes.delete(id); drawBoard(); } }
 function clearRemotes() { for (const id of [...remotes.keys()]) removeRemote(id); }
 function applyState(d) {
   if (d.id === myId) return;
@@ -592,6 +597,7 @@ function applyState(d) {
   const t = r.t;
   t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
+  if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
   r.seen = performance.now();
   if (!r.init) { copyPose(r.c, t); r.init = true; }
 }
@@ -635,7 +641,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq) };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq) };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -647,7 +653,7 @@ function onData(d, from) {
 }
 function resetNet(delay) {
   try { net.peer?.destroy(); } catch (e) { }
-  net.peer = null; net.isHost = false; net.conns.clear(); net.hostConn = null; clearRemotes();
+  net.peer = null; net.isHost = false; net.conns.clear(); net.hostConn = null; clearRemotes(); closeAllVoice();
   setStatus('reconnecting…');
   setTimeout(startNet, delay);
 }
@@ -662,6 +668,7 @@ function startNet() {
     c.on('data', d => onData(d, c));
     c.on('close', () => { net.conns.delete(c.peer); if (c.gameId) { removeRemote(c.gameId); broadcast({ t: 'bye', id: c.gameId }); } });
   });
+  p.on('call', onIncomingCall);
   p.on('disconnected', () => { if (net.isHost && !p.destroyed) p.reconnect(); });
   p.on('error', e => {
     if (e.type === 'unavailable-id' && !settled) { settled = true; p.destroy(); joinAsClient(); }
@@ -677,6 +684,7 @@ function joinAsClient() {
     c.on('data', d => onData(d, null));
     c.on('close', () => resetNet(500 + Math.random() * 2500)); // host left: someone re-hosts
   });
+  p.on('call', onIncomingCall);
   p.on('error', e => { if (net.peer === p || !net.peer) resetNet(1000 + Math.random() * 2500); });
 }
 setInterval(netTick, 50); // 20 Hz, independent of the render loop
@@ -686,7 +694,88 @@ function netTick() {
   else if (net.hostConn?.open) net.hostConn.send(s);
 }
 addEventListener('beforeunload', () => { const m = { t: 'bye', id: myId }; if (net.isHost) broadcast(m); else net.hostConn?.open && net.hostConn.send(m); });
-window.__dbg = { net, remotes, rx: 0, tx: 0 };
+// ================= VOICE CHAT (proximity, WebRTC calls through PeerJS) =================
+const voice = { stream: null, muted: false, calls: new Map(), state: 'off' }; // off | asking | on | denied | unsupported
+const voices = new Map(); // peer id -> audio nodes
+async function enableMic() {
+  if (voice.stream || voice.state === 'asking') return;
+  if (!navigator.mediaDevices?.getUserMedia) { voice.state = 'unsupported'; drawBoard(); return; }
+  voice.state = 'asking'; drawBoard();
+  try {
+    voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    voice.state = 'on'; setMuted(false);
+    for (const [pid, c] of [...voice.calls]) if (!c.sentAudio) { voice.calls.delete(pid); c.close(); } // re-call so they hear us
+    for (const r of remotes.values()) if (r.pid) callPeer(r.pid);
+  } catch (e) { voice.state = 'denied'; }
+  drawBoard();
+}
+function setMuted(m) { voice.muted = m; voice.stream?.getAudioTracks().forEach(t => { t.enabled = !m; }); drawBoard(); }
+function toggleMic() { ensureAudio(); if (!voice.stream) enableMic(); else setMuted(!voice.muted); }
+function callPeer(pid) {
+  if (!voice.stream || !net.peer || net.peer.destroyed || !pid || pid === net.peer.id || voice.calls.has(pid)) return;
+  let c; try { c = net.peer.call(pid, voice.stream); } catch (e) { return; }
+  if (!c) return;
+  c.sentAudio = true; c.outgoing = true; wireCall(pid, c);
+}
+function wireCall(pid, c) {
+  voice.calls.set(pid, c);
+  c.on('stream', s => attachVoice(pid, s));
+  c.on('close', () => { if (voice.calls.get(pid) === c) { voice.calls.delete(pid); detachVoice(pid); } });
+  c.on('error', () => { try { c.close(); } catch (e) { } });
+}
+function onIncomingCall(c) {
+  const pid = c.peer, mine = voice.calls.get(pid);
+  if (mine && mine.outgoing && net.peer && net.peer.id < pid) { c.close(); return; } // both called at once: lower id's call wins
+  if (mine) { voice.calls.delete(pid); mine.close(); }
+  c.answer(voice.stream || undefined); c.sentAudio = !!voice.stream;
+  wireCall(pid, c);
+}
+function dropVoice(pid) { const c = voice.calls.get(pid); voice.calls.delete(pid); try { c?.close(); } catch (e) { } detachVoice(pid); }
+function closeAllVoice() { for (const pid of [...voice.calls.keys()]) dropVoice(pid); for (const pid of [...voices.keys()]) detachVoice(pid); }
+function attachVoice(pid, stream) {
+  ensureAudio(); if (!actx) return;
+  detachVoice(pid);
+  const el = new Audio(); el.srcObject = stream; el.muted = true; el.play().catch(() => { }); // Chrome only feeds WebRTC audio to WebAudio if an element plays it
+  const src = actx.createMediaStreamSource(stream);
+  const panner = actx.createPanner();
+  panner.panningModel = 'HRTF'; panner.distanceModel = 'inverse'; panner.refDistance = 1.2; panner.maxDistance = 40; panner.rolloffFactor = 1.4;
+  const gain = actx.createGain(); gain.gain.value = 1.6;
+  const an = actx.createAnalyser(); an.fftSize = 256;
+  src.connect(an); src.connect(panner); panner.connect(gain); gain.connect(actx.destination);
+  voices.set(pid, { el, src, panner, gain, an, buf: new Uint8Array(an.fftSize), level: 0 });
+  drawBoard();
+}
+function detachVoice(pid) {
+  const v = voices.get(pid); if (!v) return;
+  try { v.src.disconnect(); v.panner.disconnect(); v.gain.disconnect(); } catch (e) { }
+  v.el.srcObject = null; voices.delete(pid); drawBoard();
+}
+const _vf = new THREE.Vector3(), _vu = new THREE.Vector3(), _vq = new THREE.Quaternion(), _vp = new THREE.Vector3();
+function setXYZ(node, prefix, x, y, z) {
+  if (node[prefix + 'X']) { node[prefix + 'X'].value = x; node[prefix + 'Y'].value = y; node[prefix + 'Z'].value = z; return true; }
+  return false;
+}
+function updateVoice() {
+  if (!actx) return;
+  camera.getWorldPosition(_vp); camera.getWorldQuaternion(_vq);
+  _vf.set(0, 0, -1).applyQuaternion(_vq); _vu.set(0, 1, 0).applyQuaternion(_vq);
+  const L = actx.listener;
+  if (!setXYZ(L, 'position', _vp.x, _vp.y, _vp.z)) L.setPosition(_vp.x, _vp.y, _vp.z);
+  if (L.forwardX) { setXYZ(L, 'forward', _vf.x, _vf.y, _vf.z); setXYZ(L, 'up', _vu.x, _vu.y, _vu.z); } else L.setOrientation(_vf.x, _vf.y, _vf.z, _vu.x, _vu.y, _vu.z);
+  for (const r of remotes.values()) {
+    const v = r.pid && voices.get(r.pid);
+    if (!v) { r.g.setMouth(0); continue; }
+    const h = r.c.h;
+    if (!setXYZ(v.panner, 'position', h.x, h.y, h.z)) v.panner.setPosition(h.x, h.y, h.z);
+    v.an.getByteTimeDomainData(v.buf);
+    let sum = 0; for (let i = 0; i < v.buf.length; i++) { const s = (v.buf[i] - 128) / 128; sum += s * s; }
+    v.level = Math.max(Math.min(1, Math.sqrt(sum / v.buf.length) * 5), v.level * 0.85);
+    r.g.setMouth(v.level);
+  }
+}
+const micLabel = () => ({ off: 'MIC OFF', asking: 'MIC…', on: voice.muted ? 'MUTED' : 'MIC ON', denied: 'MIC BLOCKED', unsupported: 'NO MIC' })[voice.state];
+
+window.__dbg = { net, remotes, voice, voices, callPeer, rx: 0, tx: 0 };
 drawBoard();
 startNet();
 
@@ -699,7 +788,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t); updateRemotes(dt);
+  updateMyPose(t); updateRemotes(dt); updateVoice();
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
