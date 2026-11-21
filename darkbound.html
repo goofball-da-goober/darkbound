@@ -31,9 +31,10 @@
   • Slap your hands on the ground / walls and push to move<br>
   • Push down hard and fling your arms to jump<br>
   • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn<br>
-  • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute
+  • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
+  • Camera: grab it with grip, trigger = photo, A = back to your shoulder
   <hr>
-  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute
+  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute, <b>V</b> camera view, <b>G</b> camera to shoulder, <b>P</b> photo
   <hr>
   <b>Multiplayer:</b> <span id="net">connecting…</span><br>
   Private room: add <b>?room=yourcode</b> to the link
@@ -434,7 +435,7 @@ function updateXR(dt) {
 
 // ================= DESKTOP PREVIEW =================
 const keys = {};
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') respawn(); if (e.code === 'KeyC') thirdPerson = (thirdPerson + 1) % 3; if (e.code === 'KeyM') toggleMic(); if (e.code === 'Space') e.preventDefault(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') respawn(); if (e.code === 'KeyC') thirdPerson = (thirdPerson + 1) % 3; if (e.code === 'KeyM') toggleMic(); if (e.code === 'KeyV') liv.view = !liv.view; if (e.code === 'KeyG') livToShoulder(); if (e.code === 'KeyP') takePhoto(); if (e.code === 'Space') e.preventDefault(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let yaw = 0, pitch = 0, grounded = false;
 renderer.domElement.addEventListener('click', () => { if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock?.(); });
@@ -588,7 +589,7 @@ function makeGorilla(color) {
 // ---- remote players ----
 const mkPose = () => ({ h: new THREE.Vector3(), q: new THREE.Quaternion(), l: new THREE.Vector3(), lq: new THREE.Quaternion(), r: new THREE.Vector3(), rq: new THREE.Quaternion() });
 function copyPose(a, b) { a.h.copy(b.h); a.q.copy(b.q); a.l.copy(b.l); a.lq.copy(b.lq); a.r.copy(b.r); a.rq.copy(b.rq); }
-function removeRemote(id) { const r = remotes.get(id); if (r) { if (r.pid) dropVoice(r.pid); scene.remove(r.g.root); remotes.delete(id); drawBoard(); } }
+function removeRemote(id) { const r = remotes.get(id); if (r) { if (r.pid) dropVoice(r.pid); if (r.cam) scene.remove(r.cam); scene.remove(r.g.root); remotes.delete(id); drawBoard(); } }
 function clearRemotes() { for (const id of [...remotes.keys()]) removeRemote(id); }
 function applyState(d) {
   if (d.id === myId) return;
@@ -597,6 +598,7 @@ function applyState(d) {
   const t = r.t;
   t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
+  if (d.kp && d.kq) { (r.kp ||= new THREE.Vector3()).fromArray(d.kp); (r.kq ||= new THREE.Quaternion()).fromArray(d.kq); }
   if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
   r.seen = performance.now();
   if (!r.init) { copyPose(r.c, t); r.init = true; }
@@ -607,7 +609,7 @@ function updateRemotes(dt) {
     if (now - r.seen > 6000) { removeRemote(id); continue; }
     const c = r.c, t = r.t;
     c.h.lerp(t.h, k); c.q.slerp(t.q, k); c.l.lerp(t.l, k); c.lq.slerp(t.lq, k); c.r.lerp(t.r, k); c.rq.slerp(t.rq, k);
-    r.g.update(c);
+    r.g.update(c); updateRemoteCam(r, dt);
   }
 }
 
@@ -637,11 +639,100 @@ function updateMyPose(t) {
   me.head.visible = !xr && thirdPerson > 0;
   me.update(myPose);
 }
+// ================= LIV-STYLE CAMERA (floating camcorder with a live screen) =================
+function makeCamcorder() {
+  const g = new THREE.Group();
+  part(g, new THREE.BoxGeometry(0.16, 0.1, 0.12), toon(0x2b2346, 0.1), null, null, 0.008);             // body
+  part(g, new THREE.BoxGeometry(0.03, 0.05, 0.08), toon(0x1b1530), [0, -0.075, 0.01], null, 0.006);    // grip
+  const lens = part(g, new THREE.CylinderGeometry(0.036, 0.042, 0.07, 18), toon(0x14101f), [0, 0, -0.09], null, 0.006);
+  lens.rotation.x = Math.PI / 2;
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.03, 18), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
+  glass.position.set(0, 0, -0.1255); glass.rotation.y = Math.PI; g.add(glass);
+  const rec = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b6b }));
+  rec.position.set(0.062, 0.042, -0.045); g.add(rec); g.userData.rec = rec;
+  scene.add(g); return g;
+}
+const liv = { mode: 'shoulder', held: null, offP: new THREE.Vector3(), offQ: new THREE.Quaternion(), view: false, aHeld: false, init: false, feedT: 0 };
+const livObj = makeCamcorder();
+const livCam = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 400);
+const livRT = new THREE.WebGLRenderTarget(384, 216); livRT.texture.colorSpace = THREE.SRGBColorSpace;
+const livScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.079), new THREE.MeshBasicMaterial({ map: livRT.texture }));
+livScreen.position.set(0, 0.004, 0.0615); livObj.add(livScreen);
+const _lt = new THREE.Vector3(), _lq = new THREE.Quaternion(), _lm = new THREE.Matrix4(), _lh = new THREE.Quaternion(), _lp = new THREE.Vector3();
+function livShoulderTarget(outP, outQ) {
+  _e.setFromQuaternion(myPose.q, 'YXZ');
+  outP.set(0.55, 0.3, 1.35).applyAxisAngle(_up, _e.y).add(myPose.h);           // behind and over the right shoulder
+  _lp.copy(myPose.h); _lp.y -= 0.25;                                          // aim at the chest, so you see head, arms and hands
+  _lm.lookAt(outP, _lp, _up); outQ.setFromRotationMatrix(_lm);
+}
+function livGrabUpdate() {
+  if (!renderer.xr.isPresenting) return;
+  for (const h of hands) {
+    const gp = h.source?.gamepad; if (!gp) continue;
+    const squeeze = !!gp.buttons[1]?.pressed;
+    h.grip.getWorldQuaternion(_lh);
+    if (squeeze && !h.sqHeld && !liv.held && h.last.distanceTo(livObj.position) < 0.3) { // grab it
+      liv.held = h; liv.mode = 'held';
+      const inv = _lh.clone().invert();
+      liv.offP.copy(livObj.position).sub(h.last).applyQuaternion(inv);
+      liv.offQ.copy(inv).multiply(livObj.quaternion);
+    }
+    if (!squeeze && liv.held === h) { liv.held = null; liv.mode = 'tripod'; }       // let go: it stays put
+    h.sqHeld = squeeze;
+    if (liv.held === h) {
+      livObj.position.copy(liv.offP).applyQuaternion(_lh).add(h.last);
+      livObj.quaternion.copy(_lh).multiply(liv.offQ);
+      const trig = !!gp.buttons[0]?.pressed; if (trig && !h.trigHeld) takePhoto(); h.trigHeld = trig;
+    }
+    if (h.source.handedness === 'right') { const a = !!gp.buttons[4]?.pressed; if (a && !liv.aHeld) livToShoulder(); liv.aHeld = a; } // A button
+  }
+}
+function livToShoulder() { liv.mode = 'shoulder'; liv.held = null; }
+function updateLiv(dt) {
+  livGrabUpdate();
+  if (liv.mode === 'shoulder') {
+    livShoulderTarget(_lt, _lq);
+    if (!liv.init) { livObj.position.copy(_lt); livObj.quaternion.copy(_lq); liv.init = true; }
+    livObj.position.lerp(_lt, 1 - Math.exp(-3 * dt));                         // smooth, LIV-style follow
+    livObj.quaternion.slerp(_lq, 1 - Math.exp(-4 * dt));
+  }
+  livCam.position.copy(livObj.position); livCam.quaternion.copy(livObj.quaternion);
+  livObj.userData.rec.visible = Math.floor(performance.now() / 600) % 2 === 0;
+}
+function renderFrom(cam, target) { // draw the scene from the camcorder, showing your own head too
+  const rootV = me.root.visible, headV = me.head.visible, objV = livObj.visible, xrOn = renderer.xr.enabled;
+  me.root.visible = true; me.head.visible = true; livObj.visible = false;
+  const asp = target ? target.width / target.height : innerWidth / innerHeight; if (cam.aspect !== asp) { cam.aspect = asp; cam.updateProjectionMatrix(); }
+  renderer.xr.enabled = false; renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(null); renderer.xr.enabled = xrOn;
+  me.root.visible = rootV; me.head.visible = headV; livObj.visible = objV;
+}
+function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < 1 / 30) return; liv.feedT = 0; renderFrom(livCam, livRT); } // the little screen, 30 fps
+function takePhoto() {
+  try {
+    const W = 1600, H = 900, rt = new THREE.WebGLRenderTarget(W, H); rt.texture.colorSpace = THREE.SRGBColorSpace;
+    const pc = livCam.clone(); pc.aspect = W / H; pc.updateProjectionMatrix();
+    renderFrom(pc, rt);
+    const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px); rt.dispose();
+    const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H; const c2 = cvs.getContext('2d'), img = c2.createImageData(W, H);
+    for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4); // flip
+    c2.putImageData(img, 0, 0);
+    cvs.toBlob(b => { if (!b) return; const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'darkbound-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, 'image/png');
+    tap(1); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.6, 60);
+  } catch (e) { console.warn('photo failed', e); }
+}
+// other players' camcorders
+function updateRemoteCam(r, dt) {
+  if (!r.kp) return;
+  if (!r.cam) { r.cam = makeCamcorder(); r.cam.position.copy(r.kp); r.cam.quaternion.copy(r.kq); }
+  const k = 1 - Math.exp(-12 * dt); r.cam.position.lerp(r.kp, k); r.cam.quaternion.slerp(r.kq, k);
+  r.cam.userData.rec.visible = Math.floor(performance.now() / 600) % 2 === 0;
+}
+
 const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq) };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion) };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -788,7 +879,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t); updateRemotes(dt); updateVoice();
+  updateMyPose(t); updateRemotes(dt); updateVoice(); updateLiv(dt); renderLivFeed(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
@@ -798,7 +889,8 @@ renderer.setAnimationLoop(() => {
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.rotation.x += m.userData.spin * 0.5 * dt; }
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
-  if (thirdPerson && !renderer.xr.isPresenting) {
+  if (liv.view && !renderer.xr.isPresenting) renderFrom(livCam, null);
+  else if (thirdPerson && !renderer.xr.isPresenting) {
     _e.setFromQuaternion(myPose.q, 'YXZ');
     const sd = thirdPerson === 2 ? -1.6 : 2.4;
     thirdCam.position.set(Math.sin(_e.y) * sd, thirdPerson === 2 ? 0.1 : 0.7, Math.cos(_e.y) * sd).add(myPose.h);
