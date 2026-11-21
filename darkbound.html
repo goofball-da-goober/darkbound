@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Darkbound VR</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#07040f">
+<link rel="icon" href="icon-192.png">
+<style>
+  html,body{margin:0;height:100%;background:#07040f;overflow:hidden;font-family:ui-monospace,Consolas,monospace;color:#e8dcff}
+  #hud{position:fixed;left:16px;top:16px;max-width:380px;background:rgba(10,5,25,.85);border:2px solid #9b5cff;padding:12px 14px;font-size:13px;line-height:1.55;pointer-events:none}
+  #hud h1{margin:0 0 4px;font-size:20px;color:#5ef2ff;letter-spacing:4px}
+  #hud .sub{color:#b9a3e8;margin-bottom:8px}
+  #hud b{color:#ffd447}
+  #hud hr{border:0;border-top:1px solid #4a2f80;margin:8px 0}
+</style>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <h1>DARKBOUND</h1>
+  <div class="sub">Dark-world VR prototype — movement + map</div>
+  <b>VR (Quest browser, HTTPS):</b> press ENTER VR.<br>
+  • Slap your hands on the ground / walls and push to move<br>
+  • Push down hard and fling your arms to jump<br>
+  • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn
+  <hr>
+  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front)
+  <hr>
+  <b>Multiplayer:</b> <span id="net">connecting…</span><br>
+  Private room: add <b>?room=yourcode</b> to the link
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ================= TUNING (Gorilla-style locomotion) =================
+const G = 9.8;            // gravity
+const HAND_R = 0.07;      // hand collision sphere
+const HEAD_R = 0.2;       // head collision sphere
+const FEET_R = 0.3;       // body/feet sphere
+const JUMP_MULT = 1.1;    // release velocity multiplier
+const MAX_JUMP = 6.5;     // max launch speed (m/s)
+const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
+const HIST = 6;           // frames of velocity history
+const MAX_STEP = 0.3;     // max body move per frame from hands (anti tracking-glitch)
+const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 8, 0, 7 + Math.random() * 2); // spread players out
+
+// seeded rng so the map is always the same
+let seed = 1337;
+const rnd = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rr = (a, b) => a + rnd() * (b - a);
+
+// ================= RENDERER / SCENE =================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x07040f);
+scene.fog = new THREE.FogExp2(0x0b0620, 0.018);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+const rig = new THREE.Group(); // player root: moved by the locomotion
+scene.add(rig);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 500);
+camera.position.set(0, 1.6, 0);
+rig.add(camera);
+
+scene.add(new THREE.HemisphereLight(0x8a6cff, 0x1a0b2e, 1.2));
+const sun = new THREE.DirectionalLight(0xffc6f0, 1.0); sun.position.set(20, 40, 10); scene.add(sun);
+const riftLight = new THREE.PointLight(0x9ff6ff, 40, 45, 1.5); riftLight.position.set(0, 3, 0); scene.add(riftLight);
+
+// ================= WORLD BUILDING =================
+const COL = { stone: 0x2b2346, stoneHi: 0x3a2f5e, wall: 0x140b28, trunk: 0x3a1426, leaf: 0xa3123f, leaf2: 0xd11b55, gold: 0x4a3a0c, crystal: 0x1b4a5c, maze: 0x241a40 };
+const EDGE = { cyan: 0x5ef2ff, pink: 0xff5c8a, gold: 0xffd447, violet: 0x9b5cff };
+const solid = []; // collision AABBs
+const buckets = new Map(), edgeBuckets = new Map();
+const bucket = (m, k) => m.get(k) || m.set(k, []).get(k);
+
+// box with bottom at y, centered on x/z
+function addBox(x, y, z, sx, sy, sz, color, edge = EDGE.cyan, collide = true) {
+  const g = new THREE.BoxGeometry(sx, sy, sz); g.translate(x, y + sy / 2, z);
+  bucket(buckets, color).push(g);
+  if (edge != null) {
+    const e = new THREE.EdgesGeometry(new THREE.BoxGeometry(sx, sy, sz)); e.translate(x, y + sy / 2, z);
+    bucket(edgeBuckets, edge).push(e);
+  }
+  if (collide) solid.push({ min: new THREE.Vector3(x - sx / 2, y, z - sz / 2), max: new THREE.Vector3(x + sx / 2, y + sy, z + sz / 2) });
+}
+const worldGrad = (() => { const t = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+function buildMeshes() {
+  for (const [c, geos] of buckets)
+    scene.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshToonMaterial({ color: c, gradientMap: worldGrad, emissive: c, emissiveIntensity: .18 })));
+  for (const [c, geos] of edgeBuckets)
+    scene.add(new THREE.LineSegments(mergeGeometries(geos), new THREE.LineBasicMaterial({ color: c })));
+}
+
+// --- ground: checkered dark field ---
+{
+  const cv = document.createElement('canvas'); cv.width = cv.height = 2;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#1c1033'; cx.fillRect(0, 0, 2, 2);
+  cx.fillStyle = '#2c1955'; cx.fillRect(0, 0, 1, 1); cx.fillRect(1, 1, 1, 1);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(60, 60); tex.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshToonMaterial({ map: tex, gradientMap: worldGrad }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  solid.push({ min: new THREE.Vector3(-60, -3, -60), max: new THREE.Vector3(60, 0, 60) });
+}
+
+// --- spawn plaza + the Rift ---
+addBox(0, 0, 0, 12, 0.25, 12, COL.stoneHi, EDGE.cyan);
+for (const [x, z, sx, sz] of [[0, -2.2, 4.7, 0.3], [0, 2.2, 4.7, 0.3], [-2.2, 0, 0.3, 4.1], [2.2, 0, 0.3, 4.1]])
+  addBox(x, 0.25, z, sx, 0.6, sz, COL.stone, EDGE.cyan);
+// ring of climbable pillars
+const pillarH = [3, 5, 4, 7, 3.5, 6, 4.5, 5.5];
+for (let i = 0; i < 8; i++) {
+  const a = i / 8 * Math.PI * 2 + Math.PI / 8, x = Math.cos(a) * 9, z = Math.sin(a) * 9;
+  addBox(x, 0, z, 1.3, pillarH[i], 1.3, COL.stone, EDGE.violet);
+  addBox(x, pillarH[i], z, 1.9, 0.3, 1.9, COL.stoneHi, EDGE.cyan);
+}
+
+// --- NORTH: stepped tower ---
+const tiers = [[12, 0, 4], [8.5, 4, 4], [5.5, 8, 4], [3, 12, 3]]; // size, baseY, height
+for (const [s, y, h] of tiers) addBox(0, y, -30, s, h, s, s === 3 ? COL.stoneHi : COL.stone, s === 3 ? EDGE.cyan : EDGE.violet);
+for (const [s, y, h] of tiers.slice(0, 3)) { // golden grip ledges up the south face of each tier
+  const hs = s / 2;
+  for (let i = 0; i < 5; i++)
+    addBox(-hs * 0.6 + i * (hs * 1.2 / 4), y + 0.6 + i * 0.68, -30 + hs + 0.4, 1, 0.3, 0.8, COL.gold, EDGE.gold);
+}
+for (const [dx, dz] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) addBox(dx, 15, -30 + dz, 0.35, 1, 0.35, COL.stoneHi, EDGE.cyan);
+
+// --- EAST: spiral of floating platforms around a crystal spire ---
+addBox(32, 0, 0, 1.6, 15, 1.6, COL.crystal, EDGE.cyan);
+addBox(32, 15, 0, 3, 0.4, 3, COL.gold, EDGE.gold);
+for (let i = 0; i < 16; i++) {
+  const a = Math.PI + i * 0.48, r = 9 - i * 0.35;
+  addBox(32 + Math.cos(a) * r, 1 + i * 0.85, Math.sin(a) * r, 2.6, 0.4, 2.6, COL.gold, EDGE.gold);
+}
+
+// --- SOUTH: steps up to a plateau broken by wider and wider gaps ---
+addBox(0, 0, 17, 10, 1, 3, COL.stone, EDGE.cyan);
+addBox(0, 0, 20, 10, 2, 3, COL.stone, EDGE.cyan);
+addBox(0, 0, 23, 10, 3, 3, COL.stone, EDGE.cyan);
+for (const [z0, z1] of [[24.5, 30.5], [32, 37], [39.5, 44], [47.5, 53]])
+  addBox(0, 0, (z0 + z1) / 2, 10, 4, z1 - z0, COL.stone, EDGE.violet);
+addBox(0, 4, 51, 1.2, 2.5, 1.2, COL.gold, EDGE.gold);
+
+// --- WEST: wall maze (bounce / climb practice) ---
+{
+  const X0 = -46, Z0 = -14, N = 7, C = 4;
+  for (let i = 0; i <= N; i++) for (let j = 0; j < N; j++) {
+    const edge = i === 0 || i === N;
+    if ((edge && j !== 3) || (!edge && rnd() < 0.38)) addBox(X0 + i * C, 0, Z0 + j * C + C / 2, 0.4, rr(2, 3.6), C, COL.maze, EDGE.violet);
+  }
+  for (let j = 0; j <= N; j++) for (let i = 0; i < N; i++) {
+    const edge = j === 0 || j === N;
+    if ((edge && i !== 3) || (!edge && rnd() < 0.38)) addBox(X0 + i * C + C / 2, 0, Z0 + j * C, C, rr(2, 3.6), 0.4, COL.maze, EDGE.violet);
+  }
+}
+
+// --- crimson trees scattered around ---
+function tree(x, z) {
+  const h = rr(4, 7.5);
+  addBox(x, 0, z, 0.8, h, 0.8, COL.trunk, EDGE.pink);
+  addBox(x, h - 0.3, z, 4, 1.4, 4, COL.leaf, EDGE.pink);
+  addBox(x, h + 1.1, z, 2.8, 1.2, 2.8, COL.leaf2, EDGE.pink);
+  addBox(x, h + 2.3, z, 1.4, 0.9, 1.4, COL.leaf, EDGE.pink);
+  for (let k = 0; k < 3; k++) { // branch stubs to climb
+    const y = 1.3 + k * (h - 2) / 3, d = k % 2 ? 1 : -1;
+    if (rnd() < .5) addBox(x + d * 0.9, y, z, 1.2, 0.3, 0.3, COL.trunk, EDGE.pink);
+    else addBox(x, y, z + d * 0.9, 0.3, 0.3, 1.2, COL.trunk, EDGE.pink);
+  }
+}
+{
+  const avoid = [[-8, 8, -38, -20], [19, 45, -13, 13], [-7, 7, 14, 55], [-48, -16, -16, 16], [-12, 12, -12, 12]];
+  const placed = [];
+  for (let tries = 0; placed.length < 22 && tries < 600; tries++) {
+    const x = rr(-54, 54), z = rr(-54, 54);
+    if (avoid.some(([x0, x1, z0, z1]) => x > x0 - 3 && x < x1 + 3 && z > z0 - 3 && z < z1 + 3)) continue;
+    if (placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 7)) continue;
+    placed.push([x, z]); tree(x, z);
+  }
+}
+
+// --- border walls ---
+addBox(0, 0, -61, 124, 14, 2, COL.wall, EDGE.violet);
+addBox(0, 0, 61, 124, 14, 2, COL.wall, EDGE.violet);
+addBox(-61, 0, 0, 2, 14, 120, COL.wall, EDGE.violet);
+addBox(61, 0, 0, 2, 14, 120, COL.wall, EDGE.violet);
+
+buildMeshes();
+
+// --- the Rift: a pillar of light with rising sparks ---
+const beamMat = new THREE.MeshBasicMaterial({ color: 0x9ff6ff, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 160, 32, 1, true), beamMat); beam.position.y = 80; scene.add(beam);
+const coreMat = beamMat.clone(); coreMat.opacity = .55; coreMat.color.set(0xffffff);
+const core = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 160, 16, 1, true), coreMat); core.position.y = 80; scene.add(core);
+const PN = 300, pPos = new Float32Array(PN * 3);
+for (let i = 0; i < PN; i++) { const a = rnd() * 6.283, r = rnd() * 1.3; pPos[i * 3] = Math.cos(a) * r; pPos[i * 3 + 1] = rnd() * 30; pPos[i * 3 + 2] = Math.sin(a) * r; }
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+scene.add(new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+
+// --- sky: stars + far floating wire cubes ---
+{
+  const SN = 1800, s = new Float32Array(SN * 3);
+  for (let i = 0; i < SN; i++) { const v = new THREE.Vector3(rr(-1, 1), rr(-0.15, 1), rr(-1, 1)).setLength(320); s.set([v.x, v.y, v.z], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(s, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xd8c8ff, size: 2, sizeAttenuation: false, fog: false })));
+}
+const floaters = new THREE.Group(); scene.add(floaters);
+{
+  const cols = [EDGE.cyan, EDGE.pink, EDGE.violet, EDGE.gold];
+  for (let i = 0; i < 40; i++) {
+    const sz = rr(2, 8), a = rnd() * 6.283, r = rr(90, 170);
+    const m = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(sz, sz, sz)), new THREE.LineBasicMaterial({ color: cols[i % 4], fog: false }));
+    m.position.set(Math.cos(a) * r, rr(10, 80), Math.sin(a) * r);
+    m.rotation.set(rnd() * 3, rnd() * 3, 0); m.userData.spin = rr(-.3, .3);
+    floaters.add(m);
+  }
+}
+// tower beacon
+const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(0.8), new THREE.MeshBasicMaterial({ color: EDGE.gold }));
+beacon.position.set(0, 17.5, -30); scene.add(beacon);
+
+// --- title sign ---
+{
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 384;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 1024, 384);
+  c.strokeStyle = '#9b5cff'; c.lineWidth = 10; c.strokeRect(5, 5, 1014, 374);
+  c.textAlign = 'center'; c.fillStyle = '#5ef2ff'; c.font = 'bold 150px monospace'; c.fillText('DARKBOUND', 512, 180);
+  c.fillStyle = '#ffd447'; c.font = '44px monospace'; c.fillText('SLAP. PUSH. FLING. CLIMB.', 512, 280);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 2.625), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+  sign.position.set(0, 4.3, -6.5); scene.add(sign);
+}
+
+// ================= COLLISION =================
+// push sphere (center p, radius r) out of every box; returns true if it touched anything
+function pushOut(p, r) {
+  let hit = false;
+  for (let it = 0; it < 3; it++) {
+    let any = false;
+    for (const b of solid) {
+      const cx = Math.max(b.min.x, Math.min(p.x, b.max.x));
+      const cy = Math.max(b.min.y, Math.min(p.y, b.max.y));
+      const cz = Math.max(b.min.z, Math.min(p.z, b.max.z));
+      const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 >= r * r) continue;
+      any = true;
+      if (d2 > 1e-12) { const d = Math.sqrt(d2), k = (r - d) / d; p.x += dx * k; p.y += dy * k; p.z += dz * k; }
+      else { // center inside the box: leave by the nearest face
+        const o = [[p.x - b.min.x, 'x', -1], [b.max.x - p.x, 'x', 1], [p.y - b.min.y, 'y', -1], [b.max.y - p.y, 'y', 1], [p.z - b.min.z, 'z', -1], [b.max.z - p.z, 'z', 1]];
+        let best = o[0]; for (const e of o) if (e[0] < best[0]) best = e;
+        p[best[1]] = best[2] < 0 ? b.min[best[1]] - r : b.max[best[1]] + r;
+      }
+    }
+    if (!any) break;
+    hit = true;
+  }
+  return hit;
+}
+// move a sphere from `from` by `delta` in small steps; stops at first contact
+function sweep(from, delta, r, out) {
+  const steps = Math.min(40, Math.max(1, Math.ceil(delta.length() / (r * 0.5))));
+  out.copy(from);
+  for (let i = 0; i < steps; i++) { out.addScaledVector(delta, 1 / steps); if (pushOut(out, r)) return true; }
+  return false;
+}
+
+// ================= PLAYER STATE =================
+const vel = new THREE.Vector3();
+const _h = new THREE.Vector3(), _p = new THREE.Vector3(), _f = new THREE.Vector3(), _n = new THREE.Vector3();
+const _cur = new THREE.Vector3(), _d = new THREE.Vector3(), _hit = new THREE.Vector3(), _v = new THREE.Vector3(), move = new THREE.Vector3();
+const bodyPush = new THREE.Vector3();
+
+const headWorld = out => out.copy(camera.position).applyQuaternion(rig.quaternion).add(rig.position);
+const handWorld = (h, out) => out.copy(h.grip.position).applyQuaternion(rig.quaternion).add(rig.position);
+
+// keep head + feet spheres out of geometry by moving the whole rig
+function resolveBody() {
+  bodyPush.set(0, 0, 0);
+  for (let i = 0; i < 2; i++) {
+    headWorld(_h); _p.copy(_h);
+    if (pushOut(_p, HEAD_R)) { _p.sub(_h); rig.position.add(_p); bodyPush.add(_p); }
+    headWorld(_h); _p.set(_h.x, rig.position.y + FEET_R, _h.z); _f.copy(_p);
+    if (pushOut(_p, FEET_R)) { _p.sub(_f); rig.position.add(_p); bodyPush.add(_p); }
+  }
+  return bodyPush;
+}
+// cancel velocity going into whatever pushed us; returns true if standing on something
+function applyPushToVel(push) {
+  const l = push.length(); if (l < 1e-6) return false;
+  _n.copy(push).divideScalar(l);
+  const vn = vel.dot(_n); if (vn < 0) vel.addScaledVector(_n, -vn);
+  return _n.y > 0.5;
+}
+
+// velocity history (for flinging)
+const hist = [];
+function pushHist(dt) { hist.push({ p: rig.position.clone(), dt }); if (hist.length > HIST) hist.shift(); }
+function histVel(out) {
+  if (hist.length < 2) return out.set(0, 0, 0);
+  let T = 0; for (let i = 1; i < hist.length; i++) T += hist[i].dt;
+  return out.copy(hist[hist.length - 1].p).sub(hist[0].p).divideScalar(Math.max(T, 1e-4));
+}
+
+// ================= HANDS =================
+const handGeo = new THREE.SphereGeometry(HAND_R, 16, 12);
+const hands = [0, 1].map(i => {
+  const grip = renderer.xr.getControllerGrip(i); rig.add(grip);
+  const mesh = new THREE.Mesh(handGeo, new THREE.MeshStandardMaterial({ color: 0x3b2a55, emissive: 0x5ef2ff, emissiveIntensity: .12, roughness: .7 }));
+  mesh.visible = false; scene.add(mesh);
+  const h = { grip, mesh, source: null, fresh: true, last: new THREE.Vector3(), was: false, coll: false, iter: new THREE.Vector3(), lastTap: 0 };
+  grip.addEventListener('connected', e => { h.source = e.data; h.fresh = true; }); // gorilla hands are drawn by the avatar
+  grip.addEventListener('disconnected', () => { h.source = null; mesh.visible = false; });
+  return h;
+});
+
+// ================= AUDIO / HAPTICS =================
+let actx = null;
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } }
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+addEventListener('pointerdown', ensureAudio);
+function tap(strength) {
+  if (!actx) return;
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(180 + strength * 140, t);
+  o.frequency.exponentialRampToValueAtTime(60, t + 0.09);
+  g.gain.setValueAtTime(Math.min(0.5, 0.1 + strength * 0.25), t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.13);
+}
+function onTouch(h, speed) {
+  const now = performance.now();
+  if (now - h.lastTap < 90) return;
+  h.lastTap = now;
+  const s = Math.min(1, speed / 3);
+  tap(s);
+  const act = h.source?.gamepad?.hapticActuators?.[0];
+  if (act?.pulse) act.pulse(0.15 + s * 0.5, 25);
+}
+
+// ================= RESPAWN / TURN =================
+function respawn() {
+  rig.position.copy(SPAWN); rig.quaternion.identity();
+  vel.set(0, 0, 0); hist.length = 0;
+  for (const h of hands) h.fresh = true;
+}
+function snapTurn(angle) {
+  headWorld(_h); rig.rotateY(angle); headWorld(_p); rig.position.add(_h.sub(_p));
+  hist.length = 0;
+  for (const h of hands) h.fresh = true;
+}
+
+// ================= VR LOCOMOTION (gorilla-style) =================
+let wasAny = false, turnReady = true, respawnHeld = false;
+function updateXR(dt) {
+  const act = hands.filter(h => h.source);
+  for (const h of act) if (h.fresh) { handWorld(h, h.last); pushOut(h.last, HAND_R); h.fresh = false; h.was = false; }
+
+  // 1) where do the hands want to go? if they hit something, they stay put and the body moves instead
+  move.set(0, 0, 0); let n = 0;
+  for (const h of act) {
+    handWorld(h, _cur);
+    _d.copy(_cur).sub(h.last); _d.y -= 2 * G * dt * dt; // tiny downward bias keeps planted hands planted
+    if (sweep(h.last, _d, HAND_R, _hit)) {
+      if (h.was) h.iter.copy(h.last).sub(_cur);   // already planted: anchor to old spot
+      else { h.iter.copy(_hit).sub(_cur); onTouch(h, _d.length() / dt); }
+      h.coll = true; n++; move.add(h.iter);
+    } else h.coll = false;
+  }
+  if (n === 2) move.multiplyScalar(0.5);
+  if (move.length() > MAX_STEP) move.setLength(MAX_STEP);
+
+  // 2) move the body
+  if (n > 0) {
+    vel.set(0, 0, 0);
+    rig.position.add(move);
+    resolveBody();
+  } else {
+    if (wasAny) { // just let go: fling with the speed the body had
+      histVel(_v);
+      if (_v.length() > MIN_RELEASE) { vel.copy(_v).multiplyScalar(JUMP_MULT); if (vel.length() > MAX_JUMP) vel.setLength(MAX_JUMP); }
+    }
+    vel.y -= G * dt;
+    rig.position.addScaledVector(vel, dt);
+    if (applyPushToVel(resolveBody())) { const f = Math.exp(-10 * dt); vel.x *= f; vel.z *= f; }
+  }
+  wasAny = n > 0;
+  pushHist(dt);
+
+  // 3) final hand positions (never inside walls)
+  for (const h of act) {
+    handWorld(h, _cur); pushOut(_cur, HAND_R);
+    h.last.copy(_cur); h.was = h.coll;
+    h.mesh.position.copy(_cur);
+    h.mesh.material.emissiveIntensity = h.coll ? 0.9 : 0.12;
+  }
+
+  // 4) buttons: right stick snap turn, B/Y respawn
+  let anyRespawn = false;
+  for (const h of act) {
+    const gp = h.source.gamepad; if (!gp) continue;
+    if (h.source.handedness === 'right') {
+      const x = gp.axes[2] ?? 0;
+      if (turnReady && Math.abs(x) > 0.7) { snapTurn(-Math.sign(x) * Math.PI / 6); turnReady = false; }
+      if (Math.abs(x) < 0.3) turnReady = true;
+    }
+    if (gp.buttons[5]?.pressed) anyRespawn = true;
+  }
+  if (anyRespawn && !respawnHeld) respawn();
+  respawnHeld = anyRespawn;
+}
+
+// ================= DESKTOP PREVIEW =================
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') respawn(); if (e.code === 'KeyC') thirdPerson = (thirdPerson + 1) % 3; if (e.code === 'Space') e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.code] = false; });
+let yaw = 0, pitch = 0, grounded = false;
+renderer.domElement.addEventListener('click', () => { if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock?.(); });
+addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  yaw -= e.movementX * 0.0022;
+  pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.0022));
+});
+function updateDesktop(dt) {
+  camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const sp = keys.ShiftLeft || keys.ShiftRight ? 11 : 6;
+  const tx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, tz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
+  const k = 1 - Math.exp(-(grounded ? 14 : 3) * dt);
+  vel.x += (tx - vel.x) * k; vel.z += (tz - vel.z) * k;
+  if (keys.Space && grounded) vel.y = 6.5;
+  vel.y -= G * dt;
+  rig.position.addScaledVector(vel, dt);
+  grounded = applyPushToVel(resolveBody());
+}
+
+renderer.xr.addEventListener('sessionstart', () => { ensureAudio(); respawn(); document.getElementById('hud').style.display = 'none'; });
+renderer.xr.addEventListener('sessionend', () => { camera.position.set(0, 1.6, 0); rig.quaternion.identity(); document.getElementById('hud').style.display = ''; });
+addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); thirdCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// ================= MULTIPLAYER (PeerJS: first player in a room hosts, others join) =================
+const params = new URLSearchParams(location.search);
+const ROOM = (params.get('room') || 'lobby').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
+const ROOM_ID = 'darkbound-v1-' + ROOM;
+const PALETTE = [0xff5c8a, 0x5ef2ff, 0xffd447, 0x9b5cff, 0x6dff8a, 0xff8a3d];
+const MY_COLOR = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+const myId = Math.random().toString(36).slice(2, 10);
+const net = { peer: null, isHost: false, conns: new Map(), hostConn: null, status: 'connecting…' };
+const remotes = new Map();
+const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _up = new THREE.Vector3(0, 1, 0);
+
+// in-world status board
+const netCv = document.createElement('canvas'); netCv.width = 1024; netCv.height = 128;
+const netTex = new THREE.CanvasTexture(netCv); netTex.colorSpace = THREE.SRGBColorSpace;
+const netSign = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.625), new THREE.MeshBasicMaterial({ map: netTex, transparent: true }));
+netSign.position.set(0, 2.6, -6.5); scene.add(netSign);
+let lastBoard = '';
+function drawBoard() {
+  const txt = `ROOM: ${ROOM.toUpperCase()}  •  ${remotes.size + 1} PLAYER${remotes.size ? 'S' : ''}  •  ${net.status.toUpperCase()}`;
+  if (txt === lastBoard) return; lastBoard = txt;
+  const c = netCv.getContext('2d');
+  c.clearRect(0, 0, 1024, 128); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 1024, 128);
+  c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 1018, 122);
+  c.fillStyle = '#e8dcff'; c.font = 'bold 44px monospace'; c.textAlign = 'center'; c.fillText(txt, 512, 80);
+  netTex.needsUpdate = true;
+  document.getElementById('net').textContent = `room "${ROOM}" — ${remotes.size + 1} player(s) — ${net.status}`;
+}
+function setStatus(s) { net.status = s; drawBoard(); }
+
+// ================= GORILLA MODELS (toon shaded + ink outlines) =================
+const toonGrad = (() => { const t = new THREE.DataTexture(new Uint8Array([70, 150, 255]), 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+const toon = (c, e = 0) => new THREE.MeshToonMaterial({ color: c, gradientMap: toonGrad, emissive: c, emissiveIntensity: e });
+const INK = new THREE.MeshBasicMaterial({ color: 0x06020c, side: THREE.BackSide });
+const S = (r, w = 20, h = 14) => new THREE.SphereGeometry(r, w, h);
+// mesh + inverted-hull outline (ink = outline thickness in meters)
+function part(parent, geo, mat, pos, scl, ink = 0.012) {
+  const m = new THREE.Mesh(geo, mat);
+  if (pos) m.position.set(...pos);
+  if (scl) m.scale.set(...scl);
+  if (ink) { geo.computeBoundingSphere(); const o = new THREE.Mesh(geo, INK); o.scale.setScalar(1 + ink / geo.boundingSphere.radius); m.add(o); }
+  parent.add(m); return m;
+}
+// tapered limb running from z=0 (radius r0) to z=1 (radius r1); stretched between two points
+function limb(parent, r0, r1, mat) {
+  const g = new THREE.CylinderGeometry(r1, r0, 1, 14); g.translate(0, 0.5, 0); g.rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(g, mat), o = new THREE.Mesh(g, INK), k = 1 + 0.012 / Math.min(r0, r1);
+  o.scale.set(k, k, 1); m.add(o); parent.add(m); return m;
+}
+function stretch(m, a, b) { m.position.copy(a); m.lookAt(b); m.scale.set(1, 1, Math.max(0.001, a.distanceTo(b))); }
+function makeHand(parent, side, palm, skinDark, fur) {
+  const g = new THREE.Group(); parent.add(g);
+  part(g, S(0.055), palm, [0, 0, -0.005], [1.15, 0.8, 1.25]);                                  // palm / fist
+  for (let i = 0; i < 4; i++) part(g, S(0.021, 12, 8), skinDark, [-0.039 + i * 0.026, 0.014, -0.062], [1, 1, 1.1], 0.008); // knuckles
+  part(g, S(0.024, 12, 8), skinDark, [-side * 0.058, -0.006, -0.025], [1, 1, 1.3], 0.008);       // thumb
+  part(g, S(0.062), fur, [0, 0.008, 0.06], [1.05, 1, 0.75]);                                    // furry wrist cuff
+  return g;
+}
+const _ikd = new THREE.Vector3(), _ikb = new THREE.Vector3();
+function solveElbow(sh, wr, L1, L2, bend, out) { // two-bone IK
+  const d = _ikd.copy(wr).sub(sh), dist = Math.min(Math.max(d.length(), 0.01), L1 + L2 - 1e-4); d.normalize();
+  const a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+  const b = _ikb.copy(bend).addScaledVector(d, -bend.dot(d)); if (b.lengthSq() < 1e-6) b.set(0, -1, 0); b.normalize();
+  return out.copy(sh).addScaledVector(d, a).addScaledVector(b, h);
+}
+const _gsh = new THREE.Vector3(), _gwr = new THREE.Vector3(), _gel = new THREE.Vector3(), _gbd = new THREE.Vector3();
+function makeGorilla(color) {
+  const c = new THREE.Color(color);
+  const fur = toon(c, 0.08), furDark = toon(c.clone().multiplyScalar(0.5), 0.05);
+  const skin = toon(0x3b2a4d), skinDark = toon(0x22172e), skinLight = toon(0x5e4872);
+  const BLACK = new THREE.MeshBasicMaterial({ color: 0x05030a }), SHINE = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const root = new THREE.Group(); scene.add(root);
+
+  // head (origin = eyes/camera, faces -z)
+  const head = new THREE.Group(); root.add(head);
+  const skull = new THREE.Group(); skull.scale.setScalar(1.18); head.add(skull);
+  part(skull, S(0.16, 24, 18), fur, null, [1, 0.95, 1]);
+  part(skull, S(0.1), furDark, [0, 0.062, -0.1], [1.5, 0.4, 0.65], 0.01);           // brow ridge
+  part(skull, S(0.11), skinLight, [0, -0.025, -0.085], [1.12, 0.95, 0.75], 0.01);   // face plate
+  part(skull, S(0.075), skinLight, [0, -0.082, -0.14], [1.3, 0.78, 0.85], 0.01);    // muzzle
+  part(skull, S(0.03, 10, 8), skinDark, [0, -0.108, -0.195], [1.4, 0.25, 0.5], 0);  // mouth
+  for (const s of [-1, 1]) {
+    part(skull, S(0.028, 14, 10), toon(0xffffff, 0.35), [s * 0.046, 0.012, -0.168], null, 0.007); // eye
+    part(skull, S(0.016, 10, 8), BLACK, [s * 0.046, 0.012, -0.19], null, 0);                       // pupil
+    part(skull, S(0.006, 6, 4), SHINE, [s * 0.046 - 0.006, 0.02, -0.205], null, 0);                // shine
+    part(skull, S(0.011, 8, 6), BLACK, [s * 0.022, -0.062, -0.212], [1, 0.7, 0.6], 0);             // nostril
+    part(skull, S(0.042), skin, [s * 0.158, 0, -0.005], [0.45, 1, 0.9], 0.008);                    // ear
+  }
+  part(skull, new THREE.ConeGeometry(0.045, 0.1, 10), fur, [0, 0.165, 0.02], null, 0.008).rotation.x = -0.35; // tuft
+
+  // body (yaw only)
+  const body = new THREE.Group(); root.add(body);
+  part(body, S(0.24, 24, 18), fur, null, [1.05, 1.1, 0.82]);                 // torso
+  part(body, S(0.17), skinLight, [0, 0.0, -0.12], [1.05, 1.1, 0.62], 0.01); // chest
+  for (const s of [-1, 1]) {
+    part(body, S(0.11), fur, [s * 0.21, 0.15, 0]);                           // shoulder
+    part(body, S(0.085), fur, [s * 0.12, -0.27, 0], [1, 1.2, 1]);            // leg
+    part(body, S(0.075), skin, [s * 0.13, -0.38, -0.05], [1.05, 0.55, 1.45]); // foot
+  }
+
+  const arms = [-1, 1].map(side => {
+    const palm = toon(0x3b2a4d); palm.emissive.set(0x5ef2ff); palm.emissiveIntensity = 0;
+    return { side, palm, upper: limb(root, 0.072, 0.06, fur), elbow: part(root, S(0.064), fur), fore: limb(root, 0.062, 0.088, fur), hand: makeHand(root, side, palm, skinDark, fur) };
+  });
+
+  return {
+    root, head, body,
+    setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
+    update(p) {
+      head.position.copy(p.h); head.quaternion.copy(p.q);
+      _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
+      body.position.copy(p.h); body.position.y -= 0.42; body.rotation.set(0, yaw, 0);
+      for (const A of arms) {
+        const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
+        A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
+        _gsh.set(A.side * 0.21, 0.15, 0).applyAxisAngle(_up, yaw).add(body.position);
+        _gwr.set(0, 0.008, 0.075).applyQuaternion(hq).add(hp);
+        _gbd.set(A.side * 0.7, -0.6, 0.5).applyAxisAngle(_up, yaw);
+        solveElbow(_gsh, _gwr, 0.3, 0.34, _gbd, _gel);
+        stretch(A.upper, _gsh, _gel); A.elbow.position.copy(_gel); stretch(A.fore, _gel, _gwr);
+      }
+    },
+  };
+}
+
+// ---- remote players ----
+const mkPose = () => ({ h: new THREE.Vector3(), q: new THREE.Quaternion(), l: new THREE.Vector3(), lq: new THREE.Quaternion(), r: new THREE.Vector3(), rq: new THREE.Quaternion() });
+function copyPose(a, b) { a.h.copy(b.h); a.q.copy(b.q); a.l.copy(b.l); a.lq.copy(b.lq); a.r.copy(b.r); a.rq.copy(b.rq); }
+function removeRemote(id) { const r = remotes.get(id); if (r) { scene.remove(r.g.root); remotes.delete(id); drawBoard(); } }
+function clearRemotes() { for (const id of [...remotes.keys()]) removeRemote(id); }
+function applyState(d) {
+  if (d.id === myId) return;
+  let r = remotes.get(d.id);
+  if (!r) { r = { g: makeGorilla(d.c), t: mkPose(), c: mkPose(), seen: 0, init: false }; remotes.set(d.id, r); drawBoard(); }
+  const t = r.t;
+  t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
+  if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
+  r.seen = performance.now();
+  if (!r.init) { copyPose(r.c, t); r.init = true; }
+}
+function updateRemotes(dt) {
+  const k = 1 - Math.exp(-15 * dt), now = performance.now();
+  for (const [id, r] of remotes) {
+    if (now - r.seen > 6000) { removeRemote(id); continue; }
+    const c = r.c, t = r.t;
+    c.h.lerp(t.h, k); c.q.slerp(t.q, k); c.l.lerp(t.l, k); c.lq.slerp(t.lq, k); c.r.lerp(t.r, k); c.rq.slerp(t.rq, k);
+    r.g.update(c);
+  }
+}
+
+// ---- local player body (visible in VR, and in third-person on desktop) ----
+const me = makeGorilla(MY_COLOR);
+const myPose = mkPose();
+let thirdPerson = 0; // 0 first-person, 1 behind, 2 front (selfie)
+const thirdCam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
+function updateMyPose(t) {
+  headWorld(myPose.h); camera.getWorldQuaternion(myPose.q);
+  _e.setFromQuaternion(myPose.q, 'YXZ'); const yaw = _e.y;
+  const xr = renderer.xr.isPresenting;
+  const L = hands.find(h => h.source?.handedness === 'left'), R = hands.find(h => h.source?.handedness === 'right');
+  if (xr && L && R) {
+    myPose.l.copy(L.last); L.grip.getWorldQuaternion(myPose.lq);
+    myPose.r.copy(R.last); R.grip.getWorldQuaternion(myPose.rq);
+    me.setTouch(L.coll, R.coll);
+  } else { // knuckle-walk animation
+    const spd = Math.min(1, Math.hypot(vel.x, vel.z) / 6), sw = Math.sin(t * 7) * spd;
+    _q.setFromAxisAngle(_up, yaw);
+    myPose.l.set(-0.34, -0.72 + Math.max(0, sw) * 0.12, -0.28 + sw * 0.25).applyQuaternion(_q).add(myPose.h);
+    myPose.r.set(0.34, -0.72 + Math.max(0, -sw) * 0.12, -0.28 - sw * 0.25).applyQuaternion(_q).add(myPose.h);
+    myPose.lq.copy(_q); myPose.rq.copy(_q);
+    me.setTouch(false, false);
+  }
+  me.root.visible = xr || thirdPerson;
+  me.head.visible = !xr && thirdPerson;
+  me.update(myPose);
+}
+const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
+const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
+function myState() {
+  const p = myPose;
+  return { t: 's', id: myId, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq) };
+}
+function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
+function onData(d, from) {
+  window.__dbg.rx++;
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 's' && Array.isArray(d.h)) { if (from && !from.gameId) from.gameId = d.id; applyState(d); }
+  else if (d.t === 'bye') removeRemote(d.id);
+  if (net.isHost) broadcast(d, from); // host relays to everyone else
+}
+function resetNet(delay) {
+  try { net.peer?.destroy(); } catch (e) { }
+  net.peer = null; net.isHost = false; net.conns.clear(); net.hostConn = null; clearRemotes();
+  setStatus('reconnecting…');
+  setTimeout(startNet, delay);
+}
+function startNet() {
+  if (!window.Peer) { setStatus('offline (network blocked)'); return; }
+  setStatus('connecting…');
+  const p = new Peer(ROOM_ID, { debug: 0 });
+  let settled = false;
+  p.on('open', () => { settled = true; net.peer = p; net.isHost = true; setStatus('hosting'); });
+  p.on('connection', c => {
+    c.on('open', () => { net.conns.set(c.peer, c); });
+    c.on('data', d => onData(d, c));
+    c.on('close', () => { net.conns.delete(c.peer); if (c.gameId) { removeRemote(c.gameId); broadcast({ t: 'bye', id: c.gameId }); } });
+  });
+  p.on('disconnected', () => { if (net.isHost && !p.destroyed) p.reconnect(); });
+  p.on('error', e => {
+    if (e.type === 'unavailable-id' && !settled) { settled = true; p.destroy(); joinAsClient(); }
+    else if (!settled) { settled = true; resetNet(3000 + Math.random() * 3000); }
+  });
+}
+function joinAsClient() {
+  const p = new Peer({ debug: 0 });
+  p.on('open', () => {
+    net.peer = p; net.isHost = false;
+    const c = p.connect(ROOM_ID, { serialization: 'json', metadata: { id: myId } });
+    c.on('open', () => { net.hostConn = c; setStatus('connected'); });
+    c.on('data', d => onData(d, null));
+    c.on('close', () => resetNet(500 + Math.random() * 2500)); // host left: someone re-hosts
+  });
+  p.on('error', e => { if (net.peer === p || !net.peer) resetNet(1000 + Math.random() * 2500); });
+}
+setInterval(netTick, 50); // 20 Hz, independent of the render loop
+function netTick() {
+  const s = myState(); window.__dbg.tx++;
+  if (net.isHost) broadcast(s);
+  else if (net.hostConn?.open) net.hostConn.send(s);
+}
+addEventListener('beforeunload', () => { const m = { t: 'bye', id: myId }; if (net.isHost) broadcast(m); else net.hostConn?.open && net.hostConn.send(m); });
+window.__dbg = { net, remotes, rx: 0, tx: 0 };
+drawBoard();
+startNet();
+
+// ================= LOOP =================
+respawn();
+const clock = new THREE.Clock();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 1 / 30), t = clock.elapsedTime;
+  if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
+  else updateDesktop(dt);
+  if (rig.position.y < -15) respawn();
+  updateMyPose(t); updateRemotes(dt);
+
+  // ambient animation
+  beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
+  riftLight.intensity = 36 + Math.sin(t * 2) * 8;
+  for (let i = 0; i < PN; i++) { let y = pPos[i * 3 + 1] + dt * (1.5 + (i % 7) * 0.3); if (y > 30) y -= 30; pPos[i * 3 + 1] = y; }
+  pGeo.attributes.position.needsUpdate = true;
+  for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.rotation.x += m.userData.spin * 0.5 * dt; }
+  beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
+
+  if (thirdPerson && !renderer.xr.isPresenting) {
+    _e.setFromQuaternion(myPose.q, 'YXZ');
+    const sd = thirdPerson === 2 ? -1.6 : 2.4;
+    thirdCam.position.set(Math.sin(_e.y) * sd, thirdPerson === 2 ? 0.1 : 0.7, Math.cos(_e.y) * sd).add(myPose.h);
+    _p.copy(myPose.h); _p.y -= 0.2; thirdCam.lookAt(_p);
+    renderer.render(scene, thirdCam);
+  } else renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

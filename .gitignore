@@ -1,0 +1,5 @@
+tools/
+android/
+*.keystore
+*.apk
+*.aab
