@@ -40,6 +40,7 @@
   • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
   • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
+  • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
   <hr>
   <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute, <b>V</b> camera view, <b>G</b> camera mode (shoulder / selfie / orbit / boss), <b>P</b> photo, <b>E</b> or click: summon a boss at a statue / hit the boss
@@ -232,6 +233,25 @@ for (const sx of [-1, 1]) for (const sz of [-1, 1]) { // corner towers to climb 
 // summoning statues on the south side (last one is the sealed Eye)
 const PED = [-4.5, -1.5, 1.5, 4.5].map(dx => new THREE.Vector3(AX + dx, FY + 0.85, AZ + 8.6));
 PED.forEach((p, i) => addBox(p.x, FY, p.z, 0.8, 0.85, 0.8, i === 3 ? COL.wall : COL.gold, i === 3 ? EDGE.violet : EDGE.gold));
+
+// --- STORY MODE: the Hollow, far below/away from the lobby (you get here by jumping into the Rift fountain) ---
+const SX = 0, SZ = -170, PLAT_Y = 5.8; // centre of the Hollow, height of the cliff top
+addBox(SX, 0, SZ, 10, 0.5, 10, COL.stoneHi, EDGE.gold);                                   // arrival pad
+for (const [x, z] of [[-4.8, 0], [4.8, 0], [0, 4.8]]) addBox(SX + x, 0.5, SZ + z, x ? 0.4 : 10, 0.6, x ? 10 : 0.4, COL.stone, EDGE.gold); // low rim (open to the north)
+for (let i = 0; i < 8; i++) {                                                                // chapter 1: climb the floating steps
+  const x = Math.sin(i * 1.3) * 1.8, z = -6 - i * 2.6, top = 0.5 + 0.65 * (i + 1);
+  addBox(SX + x, top - 0.4, SZ + z, 2.6, 0.4, 2.4, COL.gold, EDGE.gold);
+}
+addBox(SX, 0, SZ - 32, 14, PLAT_Y, 10, COL.stone, EDGE.violet);                          // chapter 2: the cliff top
+addBox(SX - 5, PLAT_Y, SZ - 29, 0.8, 1, 0.8, COL.crystal, EDGE.cyan);                    // shard pillars
+addBox(SX + 5, PLAT_Y, SZ - 35, 0.8, 1, 0.8, COL.crystal, EDGE.cyan);
+addBox(SX, PLAT_Y, SZ - 35.5, 1.2, 3, 1.2, COL.crystal, EDGE.cyan);                      // tall one: climb it
+for (let i = 0; i < 3; i++) addBox(SX + (i % 2 ? 0.75 : -0.75), PLAT_Y + 0.7 + i * 0.8, SZ - 34.7, 0.5, 0.25, 0.5, COL.gold, EDGE.gold);
+addBox(SX, 0, SZ - 50, 10, PLAT_Y, 8, COL.stone, EDGE.violet);                           // chapter 3: the door island (bridge appears later)
+addBox(SX - 3.6, PLAT_Y, SZ - 53, 1.4, 7, 1.4, COL.wall, EDGE.violet);                    // door frame
+addBox(SX + 3.6, PLAT_Y, SZ - 53, 1.4, 7, 1.4, COL.wall, EDGE.violet);
+addBox(SX, PLAT_Y + 7, SZ - 53, 8.6, 1.2, 1.6, COL.wall, EDGE.violet);
+addBox(SX, PLAT_Y, SZ - 53.5, 5.8, 7, 0.6, COL.maze, EDGE.pink);                          // the sealed door itself
 
 buildMeshes();
 
@@ -1658,7 +1678,174 @@ function renderSpectator(t) {
   if (r) r.cam.visible = false; renderer.render(scene, cam); if (r) r.cam.visible = true;
 }
 
-window.__boss = { B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= STORY MODE + CLAUDE (your guide) =================
+// Jump into the Rift fountain in the lobby → you fall into the Hollow. Claude shows you around.
+function makeClaudeModel() { // a friendly floating light-keeper: round, warm, big eyes, a glowing lantern bulb on top
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const warm = toon(0xff9a5c, 0.3), belly = toon(0xffd2a8, 0.25), deep = toon(0x9c4a2a, 0.1);
+  const glow = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+  part(body, S(0.35, 28, 20), warm, null, [1, 0.95, 0.95], 0.015);
+  part(body, S(0.2), belly, [0, -0.1, 0.24], [1.1, 1, 0.5], 0.008);
+  const eyes = [-1, 1].map(s => {
+    const e = part(body, S(0.085, 16, 12), B_WHITE, [s * 0.12, 0.07, 0.29], [1, 1.2, 0.6], 0.008);
+    const p = new THREE.Mesh(S(0.045, 12, 8), B_PUPIL); p.position.z = 0.06; e.add(p);
+    const sh = new THREE.Mesh(S(0.015, 6, 4), B_WHITE); sh.position.set(-0.02, 0.025, 0.1); e.add(sh);
+    return p;
+  });
+  for (const s of [-1, 1]) part(body, S(0.04, 10, 8), toon(0xff6f8a, 0.3), [s * 0.22, -0.04, 0.25], [1.2, 0.7, 0.5], 0); // cheeks
+  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16, Math.PI), deep); smile.rotation.z = Math.PI; smile.position.set(0, -0.04, 0.33); body.add(smile);
+  part(body, new THREE.CylinderGeometry(0.012, 0.018, 0.2, 8), deep, [0, 0.42, 0], null, 0.006);          // antenna stalk
+  const bulb = new THREE.Mesh(S(0.06, 14, 10), glow); bulb.position.y = 0.55; body.add(bulb);              // lantern bulb
+  const bulbHalo = new THREE.Mesh(S(0.13, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+  bulbHalo.position.y = 0.55; body.add(bulbHalo);
+  const hands = [-1, 1].map(s => { const h = part(root, S(0.07, 12, 10), warm, [s * 0.45, -0.1, 0.1], null, 0.008); return h; });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 8, 32), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = -0.48; root.add(ring);                                  // hover ring
+  const aura = new THREE.Mesh(S(0.6, 18, 12), new THREE.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
+  root.add(aura);
+  return { root, body, eyes, hands, ring, bulb, smile };
+}
+const claude = makeClaudeModel(); scene.add(claude.root);
+const CL = { pos: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), goal: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), yaw: 0, talk: 0 };
+claude.root.position.copy(CL.pos);
+// name tag + speech bubble (big enough to read in VR)
+const clTag = labelTex(null, 512, 128); clTag.draw(['CLAUDE', 'YOUR GUIDE', '#ffb070']);
+const clTagM = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.225), new THREE.MeshBasicMaterial({ map: clTag.tex, transparent: true })); scene.add(clTagM);
+const bubCv = document.createElement('canvas'); bubCv.width = 1024; bubCv.height = 384;
+const bubTex = new THREE.CanvasTexture(bubCv); bubTex.colorSpace = THREE.SRGBColorSpace;
+const bubM = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshBasicMaterial({ map: bubTex, transparent: true, depthWrite: false })); bubM.visible = false; scene.add(bubM);
+function drawBubble(text) {
+  const c = bubCv.getContext('2d'); c.clearRect(0, 0, 1024, 384);
+  c.fillStyle = 'rgba(255,248,238,0.96)'; c.strokeStyle = '#ff9a5c'; c.lineWidth = 10;
+  c.beginPath(); c.roundRect(10, 10, 1004, 320, 40); c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(470, 326); c.lineTo(512, 376); c.lineTo(554, 326); c.closePath(); c.fill();
+  c.fillStyle = '#2a1640'; c.font = 'bold 46px monospace'; c.textBaseline = 'top';
+  const words = text.split(' '); let line = '', y = 40;
+  for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > 940) { c.fillText(line, 42, y); y += 58; line = w; } else line = t; }
+  c.fillText(line, 42, y); bubTex.needsUpdate = true;
+}
+// shards, bridge, portal
+const STORY = { state: 'idle', lines: [], cur: '', shown: 0, hold: 0, then: null, shards: [], got: 0, bridge: null, portal: null, done: false, cd: 0, inside: false, check: new THREE.Vector3(SX, 0.6, SZ + 3) };
+try { STORY.done = localStorage.getItem('darkbound-story-1') === 'done'; } catch (e) { }
+const shardMat = new THREE.MeshBasicMaterial({ color: 0xfff1a8 });
+for (const [x, y, z] of [[SX - 5, PLAT_Y + 1.45, SZ - 29], [SX + 5, PLAT_Y + 1.45, SZ - 35], [SX, PLAT_Y + 3.45, SZ - 35.5]]) {
+  const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), shardMat); m.scale.y = 1.6; m.position.set(x, y, z);
+  const halo = new THREE.Mesh(S(0.4, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false })); m.add(halo);
+  scene.add(m); STORY.shards.push({ m, home: m.position.clone(), got: false });
+}
+function dynBox(x, y, z, sx, sy, sz, color, edge) { // a box made while playing (collides too)
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshToonMaterial({ color, gradientMap: worldGrad, emissive: color, emissiveIntensity: 0.5 }));
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(sx, sy, sz)), new THREE.LineBasicMaterial({ color: edge }));
+  g.add(m, e); g.position.set(x, y + sy / 2, z); scene.add(g);
+  solid.push({ min: new THREE.Vector3(x - sx / 2, y, z - sz / 2), max: new THREE.Vector3(x + sx / 2, y + sy, z + sz / 2) });
+  return g;
+}
+function makeBridge() { if (!STORY.bridge) STORY.bridge = dynBox(SX, PLAT_Y - 0.4, SZ - 41.5, 2.6, 0.4, 9.2, 0xffd447, EDGE.gold); }
+const doorEye = makeEyeModel(); doorEye.setOpen(0); doorEye.root.scale.setScalar(1.6); doorEye.root.position.set(SX, PLAT_Y + 3.8, SZ - 53.1); scene.add(doorEye.root);
+function makePortal() {
+  if (STORY.portal) return;
+  const g = new THREE.Group(); g.position.set(SX + 3, PLAT_Y + 1.3, SZ - 48.5);
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.08, 10, 40), new THREE.MeshBasicMaterial({ color: 0x5ef2ff })));
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(0.85, 32), new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const lab = labelTex(); lab.draw(['HOME', 'TOUCH TO GO BACK', '#5ef2ff']);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); sign.position.y = 1.3; g.add(sign);
+  scene.add(g); STORY.portal = g;
+}
+// fountain sign in the lobby
+{
+  const lab = labelTex(null, 1024, 256); lab.draw(['JUMP IN THE RIFT', 'STORY MODE • MEET CLAUDE', '#ffb070']);
+  const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = 'bold 74px monospace'; c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.fillText('JUMP IN THE RIFT', 512, 120); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.5, 2.45); scene.add(m);
+}
+// dialogue
+function say(lines, then) { STORY.lines = lines.slice(); STORY.then = then || null; nextLine(); }
+function nextLine() {
+  if (!STORY.lines.length) { STORY.cur = ''; bubM.visible = false; const f = STORY.then; STORY.then = null; if (f) f(); return; }
+  STORY.cur = STORY.lines.shift(); STORY.shown = 0; STORY.hold = 0; bubM.visible = true; drawBubble('');
+}
+function teleport(x, y, z, faceYaw = 0) {
+  rig.position.set(x, y, z); rig.quaternion.identity(); vel.set(0, 0, 0); hist.length = 0; for (const h of hands) h.fresh = true;
+  if (!renderer.xr.isPresenting) { yaw = faceYaw; pitch = 0; }
+}
+const inHollow = p => Math.abs(p.x - SX) < 40 && Math.abs(p.z - (SZ - 25)) < 40;
+function startStory() {
+  STORY.cd = 4; burst(new THREE.Vector3(0, 1.5, 0), 0xffffff); sfx(200, 1200, 0.6, 'sine', 0.25); sfx(80, 40, 1, 'sawtooth', 0.15);
+  teleport(SX, 0.6, SZ + 3); STORY.check.set(SX, 0.6, SZ + 3);
+  CL.pos.set(SX + 1.6, 1.8, SZ - 1); CL.goal.copy(CL.pos);
+  banner('THE HOLLOW', 'STORY MODE • CHAPTER 1', 3, '#ffb070');
+  if (STORY.done) { makeBridge(); makePortal(); STORY.state = 'done'; for (const s of STORY.shards) { s.got = true; s.m.visible = false; }
+    say(['Welcome back, gorilla!', 'The Eye\'s door is still sealed. It wakes up in version 2.5.', 'Go train in the Boss Arena. The portal by the door takes you home.']); return; }
+  STORY.state = 'arrive'; STORY.got = 0; for (const sh of STORY.shards) { sh.got = false; sh.m.visible = true; }
+  say(['Whoa! You jumped right into the Rift! Hi, I\'m Claude.', 'I keep the lights on down here in the Hollow, under Darkbound.', 'Everything up there went dark when THE EYE opened.', 'First, let\'s get you moving. Climb the golden steps up to me!'], () => {
+    CL.goal.set(SX + 1.5, PLAT_Y + 1.5, SZ - 28); STORY.state = 'climb';
+  });
+}
+function storyTouch(p, r) { return myPose.h.distanceTo(p) < r || myPose.l.distanceTo(p) < r || myPose.r.distanceTo(p) < r; }
+let _clLook = new THREE.Vector3();
+function updateStory(dt, t) {
+  STORY.cd -= dt;
+  // the fountain: jump into the Rift beam in the middle of the plaza
+  const h = myPose.h;
+  if (STORY.cd <= 0 && Math.hypot(h.x, h.z) < 1.3 && h.y < 3.5 && !inHollow(h)) startStory();
+  const here = inHollow(h);
+  // Claude: float toward the goal, bob, face you, wave while talking
+  CL.pos.lerp(CL.goal, 1 - Math.exp(-1.6 * dt));
+  claude.root.position.copy(CL.pos); claude.root.position.y += Math.sin(t * 2) * 0.08;
+  const want = Math.atan2(h.x - CL.pos.x, h.z - CL.pos.z); let d = want - CL.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+  CL.yaw += d * (1 - Math.exp(-4 * dt)); claude.root.rotation.y = CL.yaw;
+  claude.body.rotation.z = Math.sin(t * 1.3) * 0.06;
+  const talking = !!STORY.cur && STORY.shown < STORY.cur.length;
+  claude.hands[0].position.y = -0.1 + (talking ? Math.abs(Math.sin(t * 8)) * 0.15 : Math.sin(t * 2) * 0.03);
+  claude.hands[1].position.y = -0.1 + (talking ? Math.abs(Math.cos(t * 7)) * 0.1 : Math.cos(t * 2) * 0.03);
+  claude.smile.scale.y = talking ? 1 + Math.abs(Math.sin(t * 18)) * 1.2 : 1;
+  claude.bulb.scale.setScalar(1 + Math.sin(t * 3) * 0.15);
+  claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(h)).normalize();
+  for (const p of claude.eyes) p.position.set(_clLook.x * 0.035, _clLook.y * 0.03, 0.06);
+  clTagM.position.copy(claude.root.position); clTagM.position.y += 0.82; clTagM.lookAt(h);
+  bubM.position.copy(claude.root.position); bubM.position.y += 1.5; bubM.lookAt(h);
+  // typing the current line
+  if (STORY.cur) {
+    if (STORY.shown < STORY.cur.length) {
+      const before = Math.floor(STORY.shown); STORY.shown = Math.min(STORY.cur.length, STORY.shown + dt * 38);
+      if (Math.floor(STORY.shown) !== before) { drawBubble(STORY.cur.slice(0, Math.floor(STORY.shown))); if (before % 3 === 0 && here) sfx(700 + Math.random() * 300, 500, 0.04, 'triangle', 0.04); }
+    } else if ((STORY.hold += dt) > 1.8 + STORY.cur.length * 0.035) nextLine();
+  }
+  // shards spin and bob
+  for (const s of STORY.shards) if (!s.got) { s.m.rotation.y += dt * 2; s.m.position.y = s.home.y + Math.sin(t * 2 + s.home.x) * 0.12; }
+  if (STORY.portal) { STORY.portal.rotation.y += dt * 0.6; STORY.portal.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15; }
+  doorEye.setOpen(here && STORY.state === 'door' ? 0.12 + Math.sin(t * 2) * 0.05 : 0.02);
+  if (!here) return;
+  // checkpoints: fall off → back to the last safe spot, not the lobby
+  if (rig.position.y < -8) { teleport(STORY.check.x, STORY.check.y, STORY.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU', 1.5, '#ffb070'); sfx(300, 600, 0.2, 'sine', 0.15); }
+  if (STORY.state === 'climb' && h.y > PLAT_Y && h.z < SZ - 26.5) {
+    STORY.state = 'shards'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 28.5);
+    banner('CHAPTER 2', 'THE LIGHT SHARDS', 2.5, '#ffb070');
+    say(['Nice climbing, gorilla!', 'The Eye broke the light into shards. Three of them fell up here.', 'Touch all three shards! One is on top of that tall crystal. Climb it!']);
+  }
+  if (STORY.state === 'shards' || STORY.state === 'climb') for (const s of STORY.shards) {
+    if (s.got || !storyTouch(s.m.position, 0.85)) continue;
+    s.got = true; s.m.visible = false; STORY.got++; burst(s.m.position, 0xffe08a);
+    [880, 1175, 1568].forEach((f, i) => sfx(f, f, 0.2, 'triangle', 0.14, i * 0.07));
+    for (const hh of hands) hh.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.7, 80);
+    if (STORY.got < 3) say([['That\'s one!', 'That\'s two! One more!'][STORY.got - 1]]);
+    else {
+      STORY.state = 'bridge'; CL.goal.set(SX - 1.5, PLAT_Y + 1.5, SZ - 44);
+      say(['All three! Watch this...'], () => { makeBridge(); sfx(300, 900, 0.8, 'sine', 0.2); banner('CHAPTER 3', 'THE SEALED DOOR', 2.5, '#ffb070'); say(['A bridge of light! Come over to the door.']); });
+    }
+  }
+  if (STORY.state === 'bridge' && STORY.bridge && h.z < SZ - 46 && h.y > PLAT_Y - 0.5) {
+    STORY.state = 'door'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 47);
+    say(['This is the Eye\'s door. Feel that? It\'s watching.', 'The Eye is the O in DARKBOUND. It\'s the very last boss.', 'Right now it\'s sealed shut. It wakes up in version 2.5. You\'re playing alpha 0.1.', 'Until then, get strong: beat the Warden, the Witch and the Colossus in the Boss Arena.', 'This portal takes you home. I\'ll be right here, keeping the lights on. See you, gorilla!'], () => {
+      makePortal(); STORY.state = 'done'; STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
+      banner('CHAPTER COMPLETE', 'TO BE CONTINUED IN v' + EYE_VERSION, 3.5, '#6dff9a');
+    });
+    eyeStare(4, 0.5);
+  }
+  if (STORY.portal && storyTouch(STORY.portal.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); }
+}
+
+window.__boss = { startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -1734,7 +1921,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
