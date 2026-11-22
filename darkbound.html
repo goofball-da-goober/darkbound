@@ -58,8 +58,8 @@ const VERSION = 'ALPHA 0.1', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) 
 const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
-const FEET_R = 0.3;       // (old body sphere, no longer used for walls)
-const FOOT_R = 0.15;      // small floor probe under you: stands you on things, never pushes you off walls
+const BODY_DROP = 0.34;   // your gorilla body hangs this far under your head…
+const TORSO_R = 0.21;     // …and is a ball this big: you collide (and stand) with the body you can see
 const JUMP_MULT = 1.2;    // release velocity multiplier
 const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
@@ -349,9 +349,9 @@ function resolveBody() {
   for (let i = 0; i < 2; i++) {
     headWorld(_h); _p.copy(_h);
     if (pushOut(_p, HEAD_R)) { _p.sub(_h); rig.position.add(_p); bodyPush.add(_p); }
-    // feet: only hold you UP on what's under you; never shove you sideways off walls (only head + hands bump walls, like Gorilla Tag)
-    headWorld(_h); _p.set(_h.x, rig.position.y + FOOT_R, _h.z); _f.copy(_p);
-    if (pushOut(_p, FOOT_R)) { _p.sub(_f); if (_p.y > 0 && _p.y > 0.7 * _p.length()) { _p.x = 0; _p.z = 0; rig.position.add(_p); bodyPush.add(_p); } }
+    // body: a ball where your gorilla's round body is. You stand on it and it bumps walls exactly where you see it
+    headWorld(_h); _p.set(_h.x, _h.y - BODY_DROP, _h.z); _f.copy(_p);
+    if (pushOut(_p, TORSO_R)) { _p.sub(_f); rig.position.add(_p); bodyPush.add(_p); }
   }
   return bodyPush;
 }
@@ -635,7 +635,7 @@ function makeGorilla(color) {
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
       // --- body gravity ---
       _neck.copy(p.h); _neck.y -= 0.17;
-      _rest.copy(_neck); _rest.y -= 0.17;
+      _rest.copy(p.h); _rest.y -= BODY_DROP; // rests exactly on the collision ball
       if (!bInit || bp.distanceTo(_neck) > 2) { bp.copy(_rest); bv.set(0, 0, 0); bInit = true; }  // teleports / respawns
       bv.y -= G * dt;                                                   // gravity pulls the body down
       bv.addScaledVector(_bd.copy(_rest).sub(bp), 90 * dt);             // springy hang under the neck
@@ -1478,7 +1478,7 @@ function hurtMe(fromP) {
 }
 const _hp = new THREE.Vector3(), _hf = new THREE.Vector3(), _hs = new THREE.Vector3();
 function distToMe(p) { // distance from a point to your body (feet to head)
-  _hp.copy(myPose.h); _hf.set(_hp.x, rig.position.y + 0.15, _hp.z);
+  _hp.copy(myPose.h); _hf.set(_hp.x, _hp.y - BODY_DROP, _hp.z);
   _hs.copy(_hp).sub(_hf); const t = Math.max(0, Math.min(1, _bw.copy(p).sub(_hf).dot(_hs) / Math.max(_hs.lengthSq(), 1e-6)));
   return _bw.copy(_hf).addScaledVector(_hs, t).distanceTo(p);
 }
@@ -1510,7 +1510,7 @@ function updateBullets(dt) {
     if (active && !l.zap) { l.zap = true; sfx(320, 70, 0.35, 'sawtooth', 0.12); }
     if (active) {
       const h = myPose.h, d = l.orient === 'horizontal' ? Math.abs(h.z - l.pos) : Math.abs(h.x - l.pos), along = l.orient === 'horizontal' ? Math.abs(h.x - AX) : Math.abs(h.z - AZ);
-      if (d < l.w / 2 + 0.15 && along < AH + 1 && rig.position.y < FY + 2.6) hurtMe(l.beamM.position);
+      if (d < l.w / 2 + 0.15 && along < AH + 1 && myPose.h.y - BODY_DROP - TORSO_R < FY + 2.6) hurtMe(l.beamM.position);
     }
   }
   const old = B.lasers; B.lasers = old.filter(l => l.t < l.warn + l.dur + 0.15);
