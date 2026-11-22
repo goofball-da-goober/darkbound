@@ -304,8 +304,8 @@ for (let k = 0; k < 16; k++) { // dead trees
 // Mode Room: the safe room on the south side (door faces the woods)
 addBox(MX - 6, 0, MZ + 27, 0.4, 3, 9, DWW, 0x9b5cff); addBox(MX + 6, 0, MZ + 27, 0.4, 3, 9, DWW, 0x9b5cff);
 addBox(MX - 4, 0, MZ + 22.5, 4, 3, 0.4, DWW, 0x9b5cff); addBox(MX + 4, 0, MZ + 22.5, 4, 3, 0.4, DWW, 0x9b5cff);
-addBox(MX - 3, 0, MZ + 27.5, 1, 0.9, 1, COL.gold, EDGE.pink);                                    // HORROR pedestal
-addBox(MX + 3, 0, MZ + 27.5, 1, 0.9, 1, COL.gold, EDGE.cyan);                                    // BTM pedestal
+addBox(MX - 3, 0, MZ + 27.5, 1, 0.4, 1, COL.gold, EDGE.pink);                                    // HORROR pedestal
+addBox(MX + 3, 0, MZ + 27.5, 1, 0.4, 1, COL.gold, EDGE.cyan);                                    // BTM pedestal
 // Escape Gate (north edge)
 addBox(MX - 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX + 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX, 4.5, MZ - 31.6, 6, 0.6, 0.8, DWW, 0xff5c8a);
 
@@ -449,8 +449,27 @@ addEventListener('pointerdown', ensureAudio);
 addEventListener('pointerdown', () => { if (typeof SET !== 'undefined' && SET.mic !== 'off' && !voice.stream && voice.state !== 'denied' && !renderer.xr.isPresenting) enableMic(); }, { once: true });
 let _sfxOut = null;
 function sfxOut() { if (!_sfxOut) { _sfxOut = actx.createGain(); _sfxOut.connect(actx.destination); } _sfxOut.gain.value = SET.sfxVol / 5; return _sfxOut; }
+let noiseBuf = null;
+function getNoise() { if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } return noiseBuf; }
+function slapSound(strength, low = false) { // a short filtered burst of noise + a soft thump: sounds like a hand hitting something
+  const t = actx.currentTime, n = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  n.buffer = getNoise(); n.playbackRate.value = 0.8 + Math.random() * 0.4;
+  f.type = 'bandpass'; f.frequency.value = (low ? 260 : 700) + strength * 900 + Math.random() * 300; f.Q.value = 0.9;
+  g.gain.setValueAtTime(Math.min(0.7, 0.12 + strength * 0.5), t); g.gain.exponentialRampToValueAtTime(0.001, t + (low ? 0.16 : 0.07));
+  n.connect(f).connect(g).connect(sfxOut()); n.start(t, Math.random() * 0.3); n.stop(t + 0.2);
+  const o = actx.createOscillator(), og = actx.createGain(); o.type = 'sine'; o.frequency.setValueAtTime((low ? 70 : 120) + strength * 40, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+  og.gain.setValueAtTime(Math.min(0.5, 0.08 + strength * 0.35) * (low ? 1.4 : 1), t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(og).connect(sfxOut()); o.start(t); o.stop(t + 0.13);
+}
+let wind = null;
+function updateWind(speed) { // whoosh that gets louder the faster you fly
+  if (!actx || actx.state !== 'running') return;
+  if (!wind) { const n = actx.createBufferSource(); n.buffer = getNoise(); n.loop = true; const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500; const g = actx.createGain(); g.gain.value = 0; n.connect(f).connect(g).connect(sfxOut()); n.start(); wind = { f, g }; }
+  const k = Math.max(0, Math.min(1, (speed - 3) / 7)); wind.g.gain.setTargetAtTime(k * 0.22, actx.currentTime, 0.15); wind.f.frequency.setTargetAtTime(350 + k * 900, actx.currentTime, 0.15);
+}
 function tap(strength) {
   if (!actx) return;
+  slapSound(strength); return;
   const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
   o.type = 'triangle';
   o.frequency.setValueAtTime(180 + strength * 140, t);
@@ -513,7 +532,8 @@ function updateXR(dt) {
     }
     vel.y -= G * dt;
     rig.position.addScaledVector(vel, dt);
-    if (applyPushToVel(resolveBody())) { const f = Math.exp(-10 * dt); vel.x *= f; vel.z *= f; }
+    const vyIn = vel.y;
+    if (applyPushToVel(resolveBody())) { const f = Math.exp(-10 * dt); vel.x *= f; vel.z *= f; if (vyIn < -3 && actx) slapSound(Math.min(1, -vyIn / 9), true); } // landing thump
   }
   wasAny = n > 0;
   pushHist(dt);
@@ -567,7 +587,9 @@ function updateDesktop(dt) {
   if (keys.Space && grounded) vel.y = 6.5;
   vel.y -= G * dt;
   rig.position.addScaledVector(vel, dt);
+  const vyIn = vel.y, wasGround = grounded;
   grounded = applyPushToVel(resolveBody());
+  if (grounded && !wasGround && vyIn < -3 && actx) slapSound(Math.min(1, -vyIn / 9), true);
 }
 
 renderer.xr.addEventListener('sessionstart', () => { const ss = renderer.xr.getSession(); for (const ev of ['selectstart', 'squeezestart', 'select', 'squeeze']) ss?.addEventListener(ev, ensureAudio); ensureAudio(); enableMic(); respawn(); document.getElementById('hud').style.display = 'none'; });
@@ -577,7 +599,10 @@ addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth 
 // ================= MULTIPLAYER (PeerJS: first player in a room hosts, others join) =================
 const params = new URLSearchParams(location.search);
 const SPECTATE = params.has('cam'); // PC Dark Cam viewer: watch (not play)
-let ROOM = (params.get('room') || 'lobby').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
+const PUB_CODES = ['b3ed', '3dr4', 'k9qx', '7mzt', 'w2lp', 'h5vn', 'r8cj', 'f4ty']; // public rooms
+let PUBLIC = !params.get('room');
+let ROOM = PUBLIC ? PUB_CODES[0] : (params.get('room') || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || PUB_CODES[0];
+const roomTag = () => (PUBLIC ? 'PUBLIC ' : 'PRIVATE ') + '[' + ROOM.toUpperCase() + ']';
 let ROOM_ID = 'darkbound-v1-' + ROOM;
 const PALETTE = [0xff5c8a, 0x5ef2ff, 0xffd447, 0x9b5cff, 0x6dff8a, 0xff8a3d];
 // your saved info (name, color, turning, mic, volume) — set on the COMPUTAH
@@ -601,7 +626,7 @@ const netSign = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.625), new THREE.Mesh
 netSign.position.set(0, 2.6, -6.5); scene.add(netSign);
 let lastBoard = '';
 function drawBoard() {
-  const txt = `${VERSION}  •  ROOM: ${ROOM.toUpperCase()}  •  ${remotes.size + 1} PLAYER${remotes.size ? 'S' : ''}  •  ${net.status.toUpperCase()}  •  ${typeof voice === 'undefined' ? 'MIC OFF' : micLabel()}`;
+  const txt = `${VERSION}  •  ${roomTag()}  •  ${remotes.size + 1} PLAYER${remotes.size ? 'S' : ''}  •  ${net.status.toUpperCase()}  •  ${typeof voice === 'undefined' ? 'MIC OFF' : micLabel()}`;
   if (txt === lastBoard) return; lastBoard = txt;
   const c = netCv.getContext('2d');
   c.clearRect(0, 0, 1024, 128); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 1024, 128);
@@ -689,7 +714,7 @@ function makeGorilla(color) {
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
-  let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null;
+  let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null, roboGlow = null;
 
   return {
     root, head, body,
@@ -702,6 +727,19 @@ function makeGorilla(color) {
       const cx = tag.userData.cv.getContext('2d'); cx.clearRect(0, 0, 256, 64);
       if (tagName) { cx.fillStyle = 'rgba(10,5,25,0.75)'; cx.fillRect(0, 8, 256, 48); cx.fillStyle = '#fff'; cx.font = 'bold 34px monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(tagName, 128, 33); }
       tag.material.map.needsUpdate = true; tag.visible = !!tagName && !selfHidden;
+    },
+    setRobot(glowHex) { // robot gorilla: chunky faceted plating + visor + antenna + bolts + glowing core
+      fur.flatShading = furDark.flatShading = true; fur.needsUpdate = furDark.needsUpdate = true;
+      const metal = toon(0x2a2f3a, 0.05), bolt = toon(0xb8c0cc, 0.2); roboGlow = new THREE.MeshBasicMaterial({ color: glowHex });
+      const r = new THREE.Group(); skull.add(r);
+      part(r, new THREE.BoxGeometry(0.21, 0.06, 0.07), metal, [0, 0.014, -0.165], null, 0.004);            // visor band over the eyes
+      part(r, new THREE.BoxGeometry(0.17, 0.016, 0.01), roboGlow, [0, 0.014, -0.202], null, 0);             // glowing eye strip
+      part(r, new THREE.CylinderGeometry(0.008, 0.01, 0.12, 6), metal, [0.05, 0.2, 0.02], null, 0.003);      // antenna
+      part(r, S(0.022, 8, 6), roboGlow, [0.05, 0.27, 0.02], null, 0);
+      for (const sd of [-1, 1]) part(r, new THREE.CylinderGeometry(0.045, 0.045, 0.03, 10), bolt, [sd * 0.17, 0, 0], null, 0.004).rotation.z = Math.PI / 2; // ear bolts
+      for (let i = 0; i < 3; i++) part(r, new THREE.BoxGeometry(0.07, 0.007, 0.01), metal, [0, -0.085 - i * 0.014, -0.2], null, 0); // mouth grill
+      part(body, S(0.055, 10, 8), roboGlow, [0, 0.03, -0.2], [1, 1, 0.5], 0);                                // chest core
+      part(body, new THREE.TorusGeometry(0.065, 0.012, 6, 16), bolt, [0, 0.03, -0.195], null, 0);
     },
     setMonster(on, normal) {
       if (on === isMon) return; isMon = on;
@@ -1027,8 +1065,26 @@ function resetNet(delay) {
   setStatus('reconnecting…');
   setTimeout(startNet, delay);
 }
+// public: look through the public codes for a room that already has players; if none, open the first one
+function findPublic(done) {
+  setStatus('finding a public room…');
+  let probe; try { probe = new Peer({ debug: 0 }); } catch (e) { done(PUB_CODES[0]); return; }
+  let i = -1, finished = false, timer = 0;
+  const finish = code => { if (finished) return; finished = true; clearTimeout(timer); setTimeout(() => { try { probe.destroy(); } catch (e) { } }, 300); done(code); };
+  const next = () => {
+    clearTimeout(timer); if (finished) return;
+    if (++i >= PUB_CODES.length) return finish(PUB_CODES[0]);
+    const code = PUB_CODES[i]; let c; try { c = probe.connect('darkbound-v1-' + code, { serialization: 'json' }); } catch (e) { return next(); }
+    timer = setTimeout(next, 2500);
+    c.on('open', () => { try { c.close(); } catch (e) { } finish(code); });
+  };
+  probe.on('open', next);
+  probe.on('error', e => { if (e.type === 'peer-unavailable') next(); else finish(PUB_CODES[0]); });
+  setTimeout(() => finish(PUB_CODES[0]), 25000);
+}
 function startNet() {
   if (!window.Peer) { setStatus('offline (network blocked)'); return; }
+  if (PUBLIC && !net.pubChosen) { findPublic(code => { net.pubChosen = true; ROOM = code; ROOM_ID = 'darkbound-v1-' + ROOM; drawBoard(); startNet(); }); return; }
   setStatus('connecting…');
   const p = new Peer(ROOM_ID, { debug: 0 });
   let settled = false;
@@ -2765,10 +2821,15 @@ KB_ROWS.forEach(([chars, extra], r) => {
 // ---- settings that apply live ----
 function applyVolumes() { for (const v of voices.values()) v.gain.gain.value = 1.6 * SET.voiceVol / 5; if (_sfxOut) _sfxOut.gain.value = SET.sfxVol / 5; }
 function applyMic() { if (!voice.stream) return; setMuted(SET.mic !== 'open'); }
+function joinPublic() {
+  PUBLIC = true; net.pubChosen = false;
+  try { const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u); } catch (e) { }
+  if (B.def) clearBoss(); resetNet(300); CP.msg = 'FINDING A PUBLIC ROOM...';
+}
 function switchRoom(code) {
   code = (code || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
-  if (code === ROOM) { CP.msg = 'YOU ARE ALREADY IN ' + code.toUpperCase(); return; }
-  ROOM = code; ROOM_ID = 'darkbound-v1-' + ROOM;
+  if (code === ROOM && !PUBLIC) { CP.msg = 'YOU ARE ALREADY IN ' + code.toUpperCase(); return; }
+  PUBLIC = false; ROOM = code; ROOM_ID = 'darkbound-v1-' + ROOM;
   try { const u = new URL(location.href); if (ROOM === 'lobby') u.searchParams.delete('room'); else u.searchParams.set('room', ROOM); history.replaceState(null, '', u); } catch (e) { }
   if (B.def) clearBoss();
   resetNet(300); CP.msg = 'JOINING ' + ROOM.toUpperCase() + '...'; banner('JOINING ROOM', ROOM.toUpperCase(), 2, '#5ef2ff');
@@ -2821,7 +2882,7 @@ function compEnter(menu) {
   else if (menu === 'SAVE CODE') { if (!CP.input) CP.msg = 'TYPE A CODE FROM ANOTHER DEVICE, THEN ENTER'; else { CP.msg = loadSaveCode(CP.input); CP.input = ''; } }
 }
 function compOpt(menu, o) {
-  if (menu === 'ROOM') { if (o === 1) switchRoom('lobby'); if (o === 2) { CP.input = Math.random().toString(36).slice(2, 7).toUpperCase(); CP.msg = 'PRESS ENTER TO JOIN IT'; } }
+  if (menu === 'ROOM') { if (o === 1) joinPublic(); if (o === 2) { CP.input = Math.random().toString(36).slice(2, 7).toUpperCase(); CP.msg = 'PRESS ENTER TO JOIN IT'; } }
   if (menu === 'NAME' && o === 1) { SET.name = ''; saveSettings(); me.setName(''); CP.msg = 'NAME CLEARED'; }
   if (menu === 'COLOR') { CP.ch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'TURN') { SET.turn = ['snap30', 'snap45', 'smooth'][o - 1]; saveSettings(); CP.msg = 'SAVED'; }
@@ -2833,13 +2894,13 @@ function drawComp() {
   const c = compCv.getContext('2d'), W = 1024, H = 640, menu = COMP_MENU[CP.sel];
   c.fillStyle = '#07040f'; c.fillRect(0, 0, W, H); c.strokeStyle = '#5ef2ff'; c.lineWidth = 8; c.strokeRect(4, 4, W - 8, H - 8);
   c.fillStyle = '#5ef2ff'; c.fillRect(4, 4, W - 8, 56); c.fillStyle = '#07040f'; c.font = 'bold 28px monospace'; c.textBaseline = 'middle';
-  c.fillText('COMPUTAH • ' + VERSION + '  ROOM: ' + ROOM.toUpperCase() + '  PLAYERS: ' + (remotes.size + 1), 20, 33);
+  c.fillText('COMPUTAH • ' + VERSION + '  ' + roomTag() + '  PLAYERS: ' + (remotes.size + 1), 20, 33);
   COMP_MENU.forEach((m, i) => { const on = i === CP.sel; c.fillStyle = on ? '#ffd447' : '#8f80b8'; c.font = 'bold 34px monospace'; c.fillText((on ? '> ' : '  ') + m, 20, 105 + i * 52); });
   c.strokeStyle = '#2f2252'; c.lineWidth = 4; c.beginPath(); c.moveTo(300, 70); c.lineTo(300, 570); c.stroke();
   const x = 325; let y = 100; const line = (t, col = '#ffffff', size = 30) => { c.fillStyle = col; c.font = 'bold ' + size + 'px monospace'; c.fillText(t, x, y); y += size + 16; };
   const field = label => { line(label, '#cbbcf0', 26); c.fillStyle = '#1b1232'; c.fillRect(x, y - 18, 640, 56); c.strokeStyle = '#ffd447'; c.strokeRect(x, y - 18, 640, 56); c.fillStyle = '#ffd447'; c.font = 'bold 38px monospace'; c.fillText(CP.input + (Math.floor(performance.now() / 500) % 2 ? '_' : ''), x + 14, y + 10); y += 70; };
   const choice = (opts, cur) => opts.forEach(([k, label], i) => line('OPT ' + (i + 1) + ': ' + label + (k === cur ? '  <<' : ''), k === cur ? '#6dff9a' : '#ffffff', 28));
-  if (menu === 'ROOM') { line('YOU ARE IN: ' + ROOM.toUpperCase(), '#5ef2ff'); line('PLAYERS HERE: ' + (remotes.size + 1) + '   ' + net.status.toUpperCase(), '#cbbcf0', 24); field('TYPE A ROOM CODE, THEN ENTER:'); line('OPT 1: BACK TO LOBBY', '#ffffff', 26); line('OPT 2: MAKE A RANDOM CODE', '#ffffff', 26); line('SHARE THE CODE WITH FRIENDS!', '#6dff9a', 24); }
+  if (menu === 'ROOM') { line('YOU ARE IN: ' + roomTag(), '#5ef2ff'); line('PLAYERS HERE: ' + (remotes.size + 1) + '   ' + net.status.toUpperCase(), '#cbbcf0', 24); field('TYPE A ROOM CODE, THEN ENTER:'); line('OPT 1: JOIN A PUBLIC ROOM', '#ffffff', 26); line('OPT 2: MAKE A RANDOM CODE', '#ffffff', 26); line('SHARE THE CODE WITH FRIENDS!', '#6dff9a', 24); }
   if (menu === 'NAME') { line('YOUR NAME: ' + (SET.name || '(NONE)'), '#5ef2ff'); line('EVERYONE SEES IT OVER YOUR HEAD', '#cbbcf0', 24); field('TYPE A NAME (A-Z, 0-9), THEN ENTER:'); line('OPT 1: CLEAR MY NAME', '#ffffff', 26); }
   if (menu === 'COLOR') {
     ['RED', 'GREEN', 'BLUE'].forEach((n, i) => { const on = CP.ch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = 'bold 30px monospace'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k <= CP.rgb[i] ? ['#ff3b3b', '#3bff6a', '#3b7bff'][i] : '#2a1640'; c.fillRect(x + 290 + k * 30, y - 16, 24, 32); } c.fillStyle = '#fff'; c.fillText(String(CP.rgb[i]), x + 600, y); y += 58; });
@@ -2877,7 +2938,7 @@ function updateComp(dt, t) {
   if (CP.playT > 10) { try { localStorage.setItem('darkbound-time', String((+localStorage.getItem('darkbound-time') || 0) + CP.playT)); } catch (e) { } CP.playT = 0; }
   if (CP.redrawT <= 0) { CP.redrawT = 0.5; drawComp(); }
   if (CP.typing && !nearComp()) { CP.typing = false; drawComp(); }
-  if (!CP.typing && DEVICE === 'pc' && nearComp() && (CP.hintT -= dt) <= 0) { CP.hintT = 12; banner('COMPUTAH', 'PRESS T TO TYPE', 1.6, '#5ef2ff'); }
+  if (!CP.typing && DEVICE === 'pc' && nearComp() && (CP.hintT -= dt) <= 0) { CP.hintT = 1e9; banner('COMPUTAH', 'PRESS T TO TYPE', 1.6, '#5ef2ff'); }
   for (const k of kbKeys) { k.down = Math.max(0, k.down - dt); k.g.position.z = k.down > 0 ? -0.008 : 0; }
   if (!renderer.xr.isPresenting) return;
   for (const h of hands) { // VR: push a key down with your hand
@@ -2892,7 +2953,7 @@ drawComp();
 if (SET.name) me.setName(SET.name);
 
 // ================= DEVICE CHECK + PHONE / TABLET CONTROLS =================
-setTimeout(() => banner('DEVICE: ' + DEVICE_NAME, DEVICE === 'mobile' ? 'TOUCH CONTROLS ON' : DEVICE === 'vr' ? 'VR MODE' : 'KEYBOARD + MOUSE', 2.5, '#5ef2ff'), 1200);
+if (DEVICE === 'mobile') setTimeout(() => banner('DEVICE: ' + DEVICE_NAME, DEVICE === 'mobile' ? 'TOUCH CONTROLS ON' : DEVICE === 'vr' ? 'VR MODE' : 'KEYBOARD + MOUSE', 2.5, '#5ef2ff'), 1200);
 const tapTargets = () => [...kbKeys.map(k => k.top), ...(BT.active ? btBtns.map(b => b.m) : [])];
 const _ray = new THREE.Raycaster(), _rayP = new THREE.Vector2();
 function tapAt(px, py) { // tap a 3D key or battle button on the screen
@@ -2969,8 +3030,8 @@ const dwPortal = storyPortal(-9.6, 1.4, 6.5, 'GAME MODES', 'HORROR • BTM', 0xf
 const homeDW = storyPortal(MX - 4.3, 1.4, MZ + 30.5, 'HOME', 'BACK TO THE LOBBY', 0x5ef2ff);
 const gmPeds = [['horror', MX - 3, 'HORROR', 'A MONSTER HUNTS YOU', '#ff3b6b'], ['btm', MX + 3, 'BTM', 'A PLAYER IS THE MONSTER', '#5ef2ff']].map(([mode, x, title, sub, col]) => {
   const lab = labelTex(null, 512, 160); const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.5), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, fog: false }));
-  sign.position.set(x, 2.1, MZ + 27.5); scene.add(sign); // faces you as you walk in
-  const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: new THREE.Color(col), fog: false })); orb.position.set(x, 1.25, MZ + 27.5); scene.add(orb);
+  sign.position.set(x, 1.45, MZ + 27.5); scene.add(sign); // faces you as you walk in
+  const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: new THREE.Color(col), fog: false })); orb.position.set(x, 0.75, MZ + 27.5); scene.add(orb);
   return { mode, lab, orb, title, sub, col, state: '', cd: 0 };
 });
 function drawGmPeds() { for (const p of gmPeds) { const s = GM.phase === 'idle' ? 'ready' : 'busy'; if (s === p.state) continue; p.state = s; p.lab.draw([p.title, s === 'ready' ? 'TOUCH TO START • ' + p.sub : 'ROUND IN PROGRESS...', p.col]); } }
@@ -3085,6 +3146,7 @@ function jumpScare() {
 // ---- per frame ----
 const _gw = new THREE.Vector3();
 function wallAt(x, z) { for (const b of solid) if (b.max.y - b.min.y > 1 && b.min.y < 1 && x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z) return true; return false; }
+let gmKeyE = false; addEventListener('keydown', e => { if (e.code === 'KeyE') { gmKeyE = true; setTimeout(() => { gmKeyE = false; }, 120); } });
 function updateGM(dt, t) {
   const h = myPose.h, here = inDW(h);
   if (here !== gmLocal.inDW) { gmLocal.inDW = here; setDark(here); if (here) banner('THE DARKWOOD', 'STAY IN THE LIGHT...', 2.5, '#ff3b6b'); }
@@ -3094,8 +3156,8 @@ function updateGM(dt, t) {
   if (storyTouch(dwPortal.position, 1.0)) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z, Math.PI); sfx(300, 60, 0.8, 'sawtooth', 0.2); }
   if (storyTouch(homeDW.position, 1.0) && !(GM.phase === 'play' && GM.parts.includes(myId) && !GM.caught.includes(myId) && !GM.escaped.includes(myId))) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('BACK IN THE LOBBY', '', 1.5, '#5ef2ff'); }
   // mode pedestals
-  for (const p of gmPeds) { p.cd -= dt; p.orb.rotation.y += dt * 2; p.orb.position.y = 1.25 + Math.sin(t * 2) * 0.06;
-    if (GM.phase === 'idle' && p.cd <= 0 && storyTouch(p.orb.position, 0.6)) { p.cd = 3; if (gmAuth()) gmStart(p.mode); else { bsend({ t: 'gmreq', mode: p.mode }); banner('STARTING ' + p.title + '...', '', 1.5, '#ff3b6b'); } } }
+  for (const p of gmPeds) { p.cd -= dt; p.orb.rotation.y += dt * 2; p.orb.position.y = 0.75 + Math.sin(t * 2) * 0.06;
+    if (GM.phase === 'idle' && p.cd <= 0 && (storyTouch(p.orb.position, 0.8) || (gmKeyE && Math.hypot(h.x - p.orb.position.x, h.z - p.orb.position.z) < 1.6))) { p.cd = 3; if (gmAuth()) gmStart(p.mode); else { bsend({ t: 'gmreq', mode: p.mode }); banner('STARTING ' + p.title + '...', '', 1.5, '#ff3b6b'); } } }
   drawGmPeds();
   // the host moves the round along
   if (GM.phase !== 'idle') GM.t += dt;
@@ -3173,7 +3235,7 @@ function hostLongarm(dt, alive) {
 const randFur = () => new THREE.Color().setHSL(Math.random(), 0.7 + Math.random() * 0.25, 0.45 + Math.random() * 0.2).getHex();
 const lobbySpot = out => { const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 16; return out.set(Math.cos(a) * r, 0, Math.sin(a) * r + 3); };
 const BOTS = Array.from({ length: 5 }, (_, i) => {
-  const g = makeGorilla(randFur()); g.setName('LVL ???');
+  const g = makeGorilla(randFur()); g.setName('LVL ???'); g.setRobot(new THREE.Color().setHSL(Math.random(), 1, 0.6).getHex());
   const b = { id: 'bot' + i, g, pose: mkPose(), pos: new THREE.Vector3(), target: new THREE.Vector3(), ground: 0, yaw: Math.random() * 6, t: Math.random() * 3, hop: 0, hopV: 0, walk: 0, mode: 'lobby', glow: null };
   lobbySpot(b.pos); b.target.copy(b.pos); return b;
 });
@@ -3307,6 +3369,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } if (BT.active) btHands(dt); else updateXR(dt); }
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
+  updateWind(Math.hypot(vel.x, vel.y, vel.z));
   updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
