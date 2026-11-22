@@ -34,25 +34,19 @@
 <body>
 <div id="hud">
   <h1><img src="logo.png" alt="Darkbound" style="display:block;width:100%;max-width:340px;border-radius:4px"></h1>
-  <div class="sub">Dark-world VR — ALPHA 0.1</div>
-  <b>VR (Quest browser, HTTPS):</b> press ENTER VR.<br>
-  • Slap your hands on the ground / walls and push to move<br>
-  • Push down hard and fling your arms to jump<br>
-  • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn<br>
-  • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
-  • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
-  • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
-  • <b>Battles (new!):</b> touch a roaming monster. Touch / 1-4: pick, swing / Space: slap, hand / WASD: dodge<br>
-  • <b>Hat Stand:</b> by spawn, buy hats with Bound Bucks<br>
-  • <b>Game modes:</b> red GAME MODES portal west of spawn → the Darkwood: HORROR (a monster hunts you) and BTM (a player is the monster)<br>
-  • <b>COMPUTAH:</b> east of spawn. Walk up, press <b>T</b> to type: name, room codes, color, turning, mic, volume, save codes<br>
-  • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
-  • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
+  <div class="sub">Gorilla VR in a world gone dark • <span id="ver"></span></div>
+  <b>VR (Quest):</b> slap the ground and walls to move, fling your arms to jump. Right stick turns • B/Y respawn • X mute<br>
+  <b>PC:</b> click to look • WASD move • Space jump • Shift run • <b>E</b> use / slap • C camera • R respawn
   <hr>
-  <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute, <b>V</b> camera view, <b>G</b> camera mode (shoulder / selfie / orbit / boss), <b>P</b> photo, <b>E</b> or click: summon a boss at a statue / hit the boss
+  <b>Rift fountain:</b> the story, with Claude<br>
+  <b>Boss Arena</b> (south-east): fan bosses → XP and levels<br>
+  <b>GAME MODES</b> portal (west): the Darkwood, HORROR and BTM<br>
+  <b>COMPUTAH</b> (east, PC: press T): name, rooms, color, turning, mic, save codes<br>
+  <b>Hat Stand + Monster Shop</b> (south): spend Bound Bucks<br>
+  <b>Monsters</b> roam outside the lobby: touch one to battle<br>
+  <b>Dark Cam:</b> click a thumbstick to hold it • PC: V view, G mode, P photo • watch live on a PC with <b>?cam</b>
   <hr>
-  <b>Multiplayer:</b> <span id="net">connecting…</span><br>
-  Private room: add <b>?room=yourcode</b> to the link
+  <b>Room:</b> <span id="net">connecting…</span>
 </div>
 <script type="module">
 import * as THREE from 'three';
@@ -62,7 +56,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 try { await Promise.race([document.fonts.load('40px "Lilita One"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
 
 // ================= TUNING (Gorilla-style locomotion) =================
-const VERSION = 'ALPHA 0.3', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
+const VERSION = 'ALPHA 0.3'; document.getElementById('ver')?.replaceChildren(VERSION);
+const EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
 const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
@@ -496,14 +491,7 @@ function updateWind(speed) { // whoosh that gets louder the faster you fly
 }
 function tap(strength) {
   if (!actx) return;
-  slapSound(strength); return;
-  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
-  o.type = 'triangle';
-  o.frequency.setValueAtTime(180 + strength * 140, t);
-  o.frequency.exponentialRampToValueAtTime(60, t + 0.09);
-  g.gain.setValueAtTime(Math.min(0.5, 0.1 + strength * 0.25), t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-  o.connect(g).connect(sfxOut()); o.start(t); o.stop(t + 0.13);
+  slapSound(strength);
 }
 function onTouch(h, speed) {
   const now = performance.now();
@@ -685,30 +673,43 @@ function limb(parent, r0, r1, mat) {
 }
 function stretch(m, a, b) { m.position.copy(a); m.lookAt(b); m.scale.set(1, 1, Math.max(0.001, a.distanceTo(b))); }
 // curl the fingers: grip curls middle/ring/pinky, trigger curls the pointer, thumb bends when it rests on the buttons
-function poseHand(g, grip, trig, thumb) {
-  const H = g.userData.hand; if (!H) return;
-  H.fingers.forEach((f, i) => { const c = i === H.index ? trig : grip; f.f1.rotation.x = -0.15 - c * 1.35; f.f2.rotation.x = -0.1 - c * 1.3; });
-  H.thumb.rotation.x = -thumb * 0.9; H.t2.rotation.x = -thumb * 0.9;
+function poseHand(g, grip, trig, thumb) { const H = g.userData.hand; if (H) { H.tgt[0] = grip; H.tgt[1] = trig; H.tgt[2] = thumb; } }
+function animHand(g, dt) { // fingers ease toward where your controller says (no snapping, smooth over the network too)
+  const H = g.userData.hand; if (!H) return; const k = 1 - Math.exp(-dt * 22);
+  for (let i = 0; i < 3; i++) H.cur[i] += (H.tgt[i] - H.cur[i]) * k;
+  const [grip, trig, thumb] = H.cur;
+  H.fingers.forEach((f, i) => {
+    const c = i === H.index ? trig : grip, d = Math.abs(i - H.index);
+    f.f1.rotation.x = -0.12 - c * 1.25; f.f2.rotation.x = -0.08 - c * 1.45; f.f3.rotation.x = -0.05 - c * 1.0;
+    f.f1.rotation.y = (i - 1.5) * -0.09 * (1 - c * 0.8);                       // fingers fan out a bit when open
+    if (d === 3) f.f1.rotation.z = -H.side * 0.12 * (1 - c);                   // pinky splays
+  });
+  H.thumb.rotation.set(-0.2 - thumb * 0.75, H.side * (0.75 - thumb * 0.45), 0); H.t2.rotation.x = -0.2 - thumb * 0.9;
 }
 function makeHand(parent, side, palm, skinDark, fur) {
   const g = new THREE.Group(); parent.add(g);
   part(g, S(0.055), palm, [0, 0, -0.005], [1.2, 0.75, 1.15], 0.008);                               // palm
-  const segGeo1 = new THREE.CylinderGeometry(0.0115, 0.013, 0.036, 8).rotateX(Math.PI / 2).translate(0, 0, -0.018);
-  const segGeo2 = new THREE.CylinderGeometry(0.0095, 0.0115, 0.03, 8).rotateX(Math.PI / 2).translate(0, 0, -0.015);
-  const fingers = [];
-  for (let i = 0; i < 4; i++) { // four fingers along the front of the palm, each with 2 joints
-    const f1 = new THREE.Group(); f1.position.set(-0.039 + i * 0.026, 0.008, -0.058); g.add(f1);
+  const seg = (r0, r1, L) => new THREE.CapsuleGeometry((r0 + r1) * 0.58, L, 3, 8).rotateX(Math.PI / 2).translate(0, 0, -L / 2);
+  const nail = toon(0x2a2026, 0.25);
+  const fingers = [], LEN = [1, 1.1, 1.0, 0.8];                                   // pointer, middle (longest), ring, pinky
+  const index = side > 0 ? 0 : 3;
+  for (let i = 0; i < 4; i++) { // four fat gorilla fingers, each with 3 joints
+    const L = LEN[Math.abs(i - index)], l1 = 0.032 * L, l2 = 0.026 * L, l3 = 0.02 * L;
+    const f1 = new THREE.Group(); f1.position.set(-0.039 + i * 0.026, 0.008, -0.056); g.add(f1);
     part(f1, S(0.0135, 8, 6), skinDark, null, null, 0.004);                                                // knuckle
-    part(f1, segGeo1, skinDark, null, null, 0.004);
-    const f2 = new THREE.Group(); f2.position.z = -0.036; f1.add(f2);
-    part(f2, segGeo2, skinDark, null, null, 0.004); part(f2, S(0.0105, 8, 6), skinDark, [0, 0, -0.03], null, 0.003); // fingertip
-    fingers.push({ f1, f2 });
+    part(f1, seg(0.013, 0.012, l1), skinDark, null, null, 0.004);
+    const f2 = new THREE.Group(); f2.position.z = -l1; f1.add(f2); part(f2, seg(0.012, 0.011, l2), skinDark, null, null, 0.004);
+    const f3 = new THREE.Group(); f3.position.z = -l2; f2.add(f3); part(f3, seg(0.011, 0.01, l3), skinDark, null, null, 0.004);
+    part(f3, S(0.0075, 8, 6), nail, [0, 0.0075, -l3 * 0.7], [1, 0.45, 1.2], 0);                             // fingernail
+    const tip = new THREE.Object3D(); tip.position.z = -l3 - 0.011; f3.add(tip);
+    fingers.push({ f1, f2, f3, tip });
   }
-  const thumb = new THREE.Group(); thumb.position.set(-side * 0.055, -0.006, -0.02); thumb.rotation.y = side * 0.6; g.add(thumb);
-  part(thumb, segGeo1, skinDark, null, null, 0.004);
-  const t2 = new THREE.Group(); t2.position.z = -0.036; thumb.add(t2); part(t2, segGeo2, skinDark, null, null, 0.004);
-  g.userData.hand = { fingers, thumb, t2, index: side > 0 ? 0 : 3, side };
-  poseHand(g, 0.35, 0.35, 0.2);
+  const thumb = new THREE.Group(); thumb.position.set(-side * 0.052, -0.01, -0.018); g.add(thumb);
+  part(thumb, S(0.015, 8, 6), skinDark, null, null, 0.004); part(thumb, seg(0.014, 0.013, 0.03), skinDark, null, null, 0.004);
+  const t2 = new THREE.Group(); t2.position.z = -0.03; thumb.add(t2); part(t2, seg(0.013, 0.011, 0.026), skinDark, null, null, 0.004);
+  part(t2, S(0.007, 8, 6), nail, [0, 0.008, -0.022], [1, 0.45, 1.2], 0);
+  g.userData.hand = { fingers, thumb, t2, index, side, tgt: [0.35, 0.35, 0.2], cur: [0.35, 0.35, 0.2] };
+  animHand(g, 1);
   part(g, S(0.04), fur, [0, 0.006, 0.058], [1.1, 1, 0.7]);                                      // small furry wrist cuff
   g.scale.setScalar(1.5); // big gorilla mitts (Gorilla Tag style), easy to see in VR
   return g;
@@ -819,9 +820,11 @@ function makeGorilla(color) {
     setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
+    tip(i, out) { const H = arms[i].hand.userData.hand, t = H.fingers[H.index].tip; t.updateWorldMatrix(true, false); return t.getWorldPosition(out); },
     setFingers(l, r) { poseHand(arms[0].hand, l[0], l[1], l[2]); poseHand(arms[1].hand, r[0], r[1], r[2]); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p, dt = 1 / 60) {
+      animHand(arms[0].hand, dt); animHand(arms[1].hand, dt);
       head.position.copy(p.h); head.quaternion.copy(p.q);
       if (hatObj?.userData.spin) hatObj.userData.spin.rotation.y += dt * 12;
       if (tag) { tag.position.set(p.h.x, p.h.y + 0.33, p.h.z); tag.quaternion.copy(myPose.q); } // name floats over your head
@@ -916,12 +919,17 @@ function updateMyPose(t, dt) {
     myPose.r.set(o[0], o[1], o[2]).multiplyScalar(ARM_REACH).applyQuaternion(_q).add(myPose.h);
     _lq.setFromEuler(_e.set(-0.5, yaw, 0, 'YXZ')); myPose.lq.copy(_lq); myPose.rq.copy(_lq);
     me.setTouch(vrsimPose === 2, vrsimPose === 2);
+    myPose.fg = vrsimPose === 2 ? [1, 1, 1, 1, 1, 1] : [0.3, 0.3, 0.2, 0.3, 0.3, 0.2];
+    if (nearKb(myPose.l)) myPose.fg.splice(0, 3, 1, 0, 1); if (nearKb(myPose.r)) myPose.fg.splice(3, 3, 1, 0, 1);
+    me.setFingers(myPose.fg.slice(0, 3), myPose.fg.slice(3));
   } else if (xr && L && R) {
     myPose.l.copy(L.last); L.grip.getWorldQuaternion(myPose.lq);
     myPose.r.copy(R.last); R.grip.getWorldQuaternion(myPose.rq);
     me.setTouch(L.coll, R.coll);
     const fv = h => { const b = h.source?.gamepad?.buttons || []; return [b[1]?.value || 0, b[0]?.value || 0, (b[3]?.touched || b[4]?.touched || b[5]?.touched) ? 1 : 0]; };
-    myPose.fg = [...fv(L), ...fv(R)]; me.setFingers(myPose.fg.slice(0, 3), myPose.fg.slice(3));
+    myPose.fg = [...fv(L), ...fv(R)];
+    if (nearKb(L.last)) myPose.fg.splice(0, 3, 1, 0, 1); if (nearKb(R.last)) myPose.fg.splice(3, 3, 1, 0, 1); // point to type
+    me.setFingers(myPose.fg.slice(0, 3), myPose.fg.slice(3));
   } else { // knuckle-walk animation
     const spd = Math.min(1, Math.hypot(vel.x, vel.z) / 6), sw = Math.sin(t * 7) * spd;
     _q.setFromAxisAngle(_up, yaw);
@@ -1316,9 +1324,9 @@ const BOSSES = [
   { id: 'witch', name: 'THE PRISM WITCH', color: 0x5ef2ff, style: 'witch', hp: 750, intro: 'She splits light into blades.', attacks: ['twin', 'sniper', 'starfall'] },
   { id: 'colossus', name: 'RUST COLOSSUS', color: 0xff8a3d, style: 'colossus', hp: 1400, intro: 'A machine that forgot how to stop.', attacks: ['pinball', 'moths', 'grid'] },
   // fan-made bosses (not in story mode): beat them for XP + levels
-  { id: 'disco', name: 'DISCO DOOM', color: 0xff5cf0, style: 'mask', hp: 1000, fan: true, intro: 'FAN BOSS! He only dances in the dark.', attacks: ['twin', 'starfall', 'halo'] },
-  { id: 'moth', name: 'MOTHER MOTH', color: 0xe6d0ff, style: 'witch', hp: 1100, fan: true, intro: 'FAN BOSS! Her babies are the bullets.', attacks: ['moths', 'sniper', 'starfall'] },
-  { id: 'jelly', name: 'THE JELLY TYRANT', color: 0x6dff8a, style: 'warden', hp: 1300, fan: true, intro: 'FAN BOSS! Wobbly, sticky and very angry.', attacks: ['pinball', 'gate', 'grid'] },
+  { id: 'disco', name: 'DISCO DOOM', color: 0xff5cf0, style: 'disco', hp: 1000, fan: true, intro: 'FAN BOSS! He only dances in the dark.', attacks: ['twin', 'starfall', 'halo'] },
+  { id: 'moth', name: 'MOTHER MOTH', color: 0xe6d0ff, style: 'moth', hp: 1100, fan: true, intro: 'FAN BOSS! Her babies are the bullets.', attacks: ['moths', 'sniper', 'starfall'] },
+  { id: 'jelly', name: 'THE JELLY TYRANT', color: 0x6dff8a, style: 'jelly', hp: 1300, fan: true, intro: 'FAN BOSS! Wobbly, sticky and very angry.', attacks: ['pinball', 'gate', 'grid'] },
 ];
 const THE_EYE = { id: 'eye', name: 'THE EYE', unlock: EYE_VERSION }; // the O in DARKBOUND. The last boss. Wakes up in version 2.5.
 const defeated = new Set((() => { try { return JSON.parse(localStorage.getItem('darkbound-defeated') || '[]'); } catch (e) { return []; } })());
@@ -1366,6 +1374,38 @@ function makeBossModel(def) {
     const orbit = new THREE.Group(); head.add(orbit); spinners.push(orbit);
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; part(orbit, new THREE.OctahedronGeometry(0.2), glow, [Math.cos(a) * 1.75, Math.sin(i * 1.3) * 0.3, Math.sin(a) * 1.75], [1, 1.6, 1], 0.012); }
   }
+  const flaps = []; let jiggle = false;
+  if (st === 'disco') { // DISCO DOOM: a mirror-ball head that spins, big shades, coloured light beams
+    const tiles = new THREE.Group(); head.add(tiles); spinners.push(tiles);
+    const tileGeo = new THREE.PlaneGeometry(0.17, 0.17), tileMats = [0xffffff, 0xff5cf0, 0x5ef2ff, 0xd8d8ee].map(c => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+    for (let la = -3; la <= 3; la++) for (let lo = 0; lo < 16; lo++) {
+      const phi = la * 0.36, th = lo / 16 * Math.PI * 2 + la * 0.2, n = new THREE.Vector3(Math.cos(phi) * Math.sin(th) * 1.16, Math.sin(phi), Math.cos(phi) * Math.cos(th));
+      if (n.z > 0.5 && Math.abs(phi) < 0.8) continue; // keep the face clear
+      const tile = new THREE.Mesh(tileGeo, tileMats[(la + lo + 8) & 3]); tile.position.copy(n).multiplyScalar(1.02); tile.lookAt(n.clone().multiplyScalar(3)); tiles.add(tile);
+    }
+    part(head, new THREE.BoxGeometry(0.98, 0.24, 0.1), B_PUPIL, [0, 0.03, faceZ + 0.4], null, 0.01);                         // shades
+    part(head, new THREE.BoxGeometry(0.3, 0.04, 0.01), B_WHITE, [-0.22, 0.09, faceZ + 0.46], null, 0);                       // shine on the shades
+    const beams = new THREE.Group(); beams.position.y = 0.2; head.add(beams); spinners.push(beams);
+    [0xff5cf0, 0x5ef2ff, 0xffd447].forEach((c, i) => { const b = new THREE.Mesh(new THREE.ConeGeometry(0.35, 3, 14, 1, true), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); const a = i / 3 * Math.PI * 2; b.position.set(Math.cos(a) * 1.6, 0.8, Math.sin(a) * 1.6); b.rotation.set(0, 0, 0); b.lookAt(0, 0, 0); b.rotateX(Math.PI / 2); beams.add(b); });
+  }
+  if (st === 'moth') { // MOTHER MOTH: big flapping wings with eye-spots, feathery antennae, a fluffy collar
+    const wingM = toon(c.clone().lerp(new THREE.Color(0x8a6a9a), 0.35), 0.15), spotO = toon(0x3a1f4a, 0.1), spotI = new THREE.MeshBasicMaterial({ color: 0xffd447 });
+    for (const sd of [-1, 1]) for (const [dy, sc] of [[0.35, 1.25], [-0.5, 0.85]]) {
+      const w = new THREE.Group(); w.position.set(sd * 0.7, dy, -0.45); head.add(w); flaps.push({ g: w, s: sd });
+      const wing = part(w, new THREE.CircleGeometry(1, 28), wingM, [sd * 1.0 * sc, 0, 0], [sc, sc * 0.72, 1], 0.03); wing.material.side = THREE.DoubleSide;
+      part(w, new THREE.CircleGeometry(0.28, 20), spotO, [sd * 1.15 * sc, 0, 0.01], [sc, sc, 1], 0).material.side = THREE.DoubleSide;
+      part(w, new THREE.CircleGeometry(0.12, 16), spotI, [sd * 1.15 * sc, 0, 0.02], [sc, sc, 1], 0).material.side = THREE.DoubleSide;
+    }
+    for (const sd of [-1, 1]) for (let k = 0; k < 5; k++) { part(head, S(0.05 - k * 0.006, 8, 6), dark, [sd * (0.25 + k * 0.12), 0.95 + k * 0.17, 0.1], null, 0.006); part(head, new THREE.ConeGeometry(0.025, 0.22, 5), dark, [sd * (0.32 + k * 0.12), 0.95 + k * 0.17, 0.1], null, 0).rotation.z = -sd * 1.2; }
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; part(head, S(0.22, 10, 8), toon(0xfff6ff, 0.25), [Math.cos(a) * 0.95, -0.8, Math.sin(a) * 0.85], null, 0.012); }
+  }
+  if (st === 'jelly') { // THE JELLY TYRANT: see-through wobbly jelly, bubbles inside, a tiny crown, drips
+    skin.transparent = true; skin.opacity = 0.72; jiggle = true;
+    for (let k = 0; k < 7; k++) part(head, S(0.06 + Math.random() * 0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0xeafff0, transparent: true, opacity: 0.6 }), [(Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.0, (Math.random() - 0.5) * 0.8], null, 0);
+    const gold = toon(0xffc83d, 0.35); part(head, new THREE.CylinderGeometry(0.32, 0.36, 0.14, 16, 1, true), gold, [0.15, 1.0, 0], null, 0.01).material.side = THREE.DoubleSide;
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; part(head, new THREE.ConeGeometry(0.06, 0.18, 6), gold, [0.15 + Math.cos(a) * 0.33, 1.12, Math.sin(a) * 0.33], null, 0.005); }
+    for (let k = 0; k < 6; k++) part(head, new THREE.ConeGeometry(0.08, 0.35, 8), skin, [-0.7 + k * 0.28, -0.98, (k % 2 ? 0.3 : -0.2)], null, 0.008).rotation.x = Math.PI; // drips
+  }
   if (st === 'king') { // the Hollow King: a tall golden crown with gems, a long dark cape, fangs
     const gold = toon(0xffc83d, 0.35), gem = new THREE.MeshBasicMaterial({ color: 0xff3b6b });
     part(head, new THREE.CylinderGeometry(0.75, 0.82, 0.32, 20, 1, true), gold, [0, 0.98, 0], null, 0.02).material.side = THREE.DoubleSide;
@@ -1384,7 +1424,7 @@ function makeBossModel(def) {
   for (let i = 0; i < 3; i++) { const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), new THREE.MeshBasicMaterial({ color: 0xffd447 })); m.position.set(Math.cos(i * 2.1) * 0.8, 0, Math.sin(i * 2.1) * 0.8); dizzy.add(m); }
   const aura = new THREE.Mesh(S(1.7, 20, 14), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
   head.add(aura);
-  return { root, head, eyes, hands, skin, mouth, spinners, dizzy, aura };
+  return { root, head, eyes, hands, skin, mouth, spinners, dizzy, aura, flaps, jiggle };
 }
 function makeEyeModel() { // tan cracked eyeball with a dark slit, like the O in the logo
   const root = new THREE.Group();
@@ -1832,6 +1872,8 @@ function updateBoss(dt, t) {
       m.skin.emissiveIntensity = 0.22 + B.flash * 1.2 + (B.phase === 'stag' ? 0.15 + Math.sin(t * 10) * 0.1 : 0);
       m.aura.material.opacity = 0.08 + Math.sin(t * 3) * 0.04 + B.flash * 0.2;
       for (const s of m.spinners) s.rotation.y += dt * 1.2;
+      for (const f of m.flaps) f.g.rotation.y = f.s * (0.3 + Math.sin(t * 7) * 0.45);                       // moth wings flap
+      if (m.jiggle) { const j = Math.sin(t * 6) * 0.06; m.head.scale.set(1 + j, 1 - j, 1 + j); }       // jelly wobbles
       m.dizzy.visible = B.phase === 'stag'; m.dizzy.rotation.y += dt * 5;
       m.mouth.rotation.z = B.phase === 'stag' ? Math.sin(t * 9) * 0.4 : 0;
       // pupils follow you (spin when dizzy)
@@ -2858,7 +2900,9 @@ function updateRoam(dt, t) {
     if (BT.active && BT.roam === r) continue;
     r.cd -= dt; r.t -= dt;
     if (r.t <= 0) { r.t = 2 + Math.random() * 3; r.target.set(r.home.x + (Math.random() - 0.5) * 7, 0, r.home.z + (Math.random() - 0.5) * 7); }
-    _btv.set(r.target.x - r.pos.x, 0, r.target.z - r.pos.z); const d = _btv.length(); if (d > 0.1) r.pos.addScaledVector(_btv, Math.min(d, 0.9 * dt) / d);
+    _btv.set(r.target.x - r.pos.x, 0, r.target.z - r.pos.z); const d = _btv.length();
+    if (d > 0.1) { const st = Math.min(d, 0.9 * dt) / d, nx = r.pos.x + _btv.x * st, nz = r.pos.z + _btv.z * st, g0 = groundAt(r.pos.x, r.pos.z, 30);
+      if (r.type !== 'bat' && botBlocked(nx, nz, g0 > -1e8 ? g0 : 0)) { r.t = 0; r.target.copy(r.pos); } else { r.pos.x = nx; r.pos.z = nz; } }
     const g = groundAt(r.pos.x, r.pos.z, 30); const gy = g > -1e8 ? g : 0;
     let y = gy + 0.25;
     if (r.type === 'gloom') { r.hop = (r.hop + dt * 2.6) % 1; y = gy + 0.12 + Math.sin(r.hop * Math.PI) * 0.4; }
@@ -3012,6 +3056,7 @@ function drawComp() {
   compTex.needsUpdate = true;
 }
 // PC: press T near the computer to type on it with your real keyboard
+const _nkv = new THREE.Vector3(), nearKb = p => p.distanceTo(kb.getWorldPosition(_nkv)) < 0.6;
 const nearComp = () => myPose.h.distanceTo(_cpv.set(10.25, 0.6, -5)) < 2.4;
 const _cpv = new THREE.Vector3();
 addEventListener('keydown', e => {
@@ -3033,13 +3078,15 @@ function updateComp(dt, t) {
   if (!CP.typing && DEVICE === 'pc' && nearComp() && (CP.hintT -= dt) <= 0) { CP.hintT = 1e9; banner('COMPUTAH', 'PRESS T TO TYPE', 1.6, '#5ef2ff'); }
   for (const k of kbKeys) { k.down = Math.max(0, k.down - dt); k.g.position.z = k.down > 0 ? -0.008 : 0; }
   if (!renderer.xr.isPresenting) return;
-  for (const h of hands) { // VR: push a key down with your hand
-    if (!h.source) { h.compKey = null; continue; }
-    kb.worldToLocal(_cpv.copy(h.last)); let hit = null;
-    if (_cpv.z < 0.09 && _cpv.z > -0.05) for (const k of kbKeys) if (Math.abs(_cpv.x - k.x) < k.hw && Math.abs(_cpv.y - k.y) < 0.028) { hit = k; break; }
+  hands.forEach((h, hi) => { // VR: poke a key with your pointer fingertip
+    if (!h.source) { h.compKey = null; return; }
+    const side = h.source.handedness === 'left' ? 0 : 1;
+    kb.worldToLocal(me.tip(side, _cpv)); let hit = null;
+    if (_cpv.z < 0.032 && _cpv.z > -0.04) { let best = 0.03; for (const k of kbKeys) { const dx = Math.abs(_cpv.x - k.x) - k.hw, dy = Math.abs(_cpv.y - k.y) - 0.026; const m = Math.max(dx, dy); if (m < best && m < 0.006) { best = m; hit = k; } } }
+    if (!hit && h.compKey && _cpv.z < 0.05) hit = h.compKey;                     // still resting on the same key: don't repeat it
     if (hit && hit !== h.compKey && hit.down <= 0) { hit.down = 0.15; compKey(hit.label); h.source.gamepad?.hapticActuators?.[0]?.pulse?.(0.3, 20); }
     h.compKey = hit;
-  }
+  });
 }
 drawComp();
 
@@ -3329,9 +3376,6 @@ function updateGM(dt, t) {
       const target = GM.parts.includes(id) && id !== GM.monster && !GM.caught.includes(id) && !GM.escaped.includes(id);
       if (!r.glow) { r.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(r.glow); }
       r.glow.visible = iAmMonster && target; if (r.glow.visible) r.glow.position.copy(r.c.h).add(_gw.set(0, 0.35, 0));
-      if (false && iAmMonster && target && GM.t >= 12 && gmLocal.tagCd <= 0) { // (old touch-tag, replaced by grabbing)
-        const c = r.c.h, k = tagMul(); if (h.distanceTo(c) < 0.6 * k || myPose.l.distanceTo(c) < 0.45 * k || myPose.r.distanceTo(c) < 0.45 * k) { gmLocal.tagCd = 1; gmReport('gmtag', { id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); }
-      }
       if (!iAmMonster && id === GM.monster && GM.parts.includes(myId) && !GM.caught.includes(myId)) {
         const d = h.distanceTo(r.c.h); if (d < 14 && (gmLocal.beatT -= dt) <= 0) { gmLocal.beatT = 0.3 + d / 14 * 1.2; sfx(60, 40, 0.12, 'sine', 0.3 * (1 - d / 14) + 0.08); sfx(55, 35, 0.1, 'sine', 0.2 * (1 - d / 14) + 0.05, 0.14); }
       }
@@ -3343,13 +3387,28 @@ function updateGM(dt, t) {
   gmPanel.m.visible = renderer.xr.isPresenting && !!gmHudText;
 }
 // the host's monster brain: wander between rooms, chase whoever gets close (slower through walls)
+// which neighbouring maze cells are open (no wall between them), and a breadth-first search for the next step
+const cellOf = p => [Math.max(0, Math.min(7, Math.round((p.x - (MX - 24.5)) / 7))), Math.max(0, Math.min(6, Math.round((p.z - (MZ - 24.5)) / 7)))];
+const edgeKey = (i, j, i2, j2) => i + ',' + j + '>' + i2 + ',' + j2, DIRS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const OPEN_EDGE = new Map();
+for (let i = 0; i < 8; i++) for (let j = 0; j < 7; j++) for (const [di, dj] of DIRS4) { const i2 = i + di, j2 = j + dj; if (i2 < 0 || i2 > 7 || j2 < 0 || j2 > 6) continue; const a = CELL(i, j), b2 = CELL(i2, j2); OPEN_EDGE.set(edgeKey(i, j, i2, j2), !wallAt((a.x + b2.x) / 2, (a.z + b2.z) / 2)); }
+function pathStep(from, to, out) {
+  const [si, sj] = cellOf(from), [ti, tj] = cellOf(to), start = si + ',' + sj;
+  if (start === ti + ',' + tj) return out.copy(to);
+  const prev = new Map([[start, null]]), q = [[si, sj]];
+  while (q.length) { const [i, j] = q.shift(); if (i === ti && j === tj) break; for (const [di, dj] of DIRS4) { const i2 = i + di, j2 = j + dj, k = i2 + ',' + j2; if (prev.has(k) || !OPEN_EDGE.get(edgeKey(i, j, i2, j2))) continue; prev.set(k, i + ',' + j); q.push([i2, j2]); } }
+  let k = ti + ',' + tj; if (!prev.has(k)) return out.copy(to); // no way around: walk straight (slowly, through the wall)
+  while (prev.get(k) !== start) k = prev.get(k);
+  const [ni, nj] = k.split(',').map(Number); return out.copy(CELL(ni, nj));
+}
+const _gpA = new THREE.Vector3(), _gpB = new THREE.Vector3();
 function hostLongarm(dt, alive) {
   const ai = GM.ai; let target = null, best = 13;
   for (const id of alive) { const p = id === myId ? myPose.h : remotes.get(id)?.c.h; if (!p) continue; const d = Math.hypot(p.x - ai.x, p.z - ai.z); if (d < best) { best = d; target = p; } }
   if (target) { gmLocal.aiTarget.set(target.x, 0, target.z); if (ai.st !== 'chase') sfx(90, 45, 0.6, 'sawtooth', 0.12); ai.st = 'chase'; gmLocal.aiLost = 0; }
   else if (ai.st === 'chase' && (gmLocal.aiLost += dt) > 4) ai.st = 'wander';
   if (ai.st === 'wander' && Math.hypot(gmLocal.aiTarget.x - ai.x, gmLocal.aiTarget.z - ai.z) < 1) gmLocal.aiTarget.copy(OPEN_CELLS[Math.floor(Math.random() * OPEN_CELLS.length)]);
-  _gw.set(gmLocal.aiTarget.x - ai.x, 0, gmLocal.aiTarget.z - ai.z); const d = _gw.length();
+  const wp = pathStep(_gpA.set(ai.x, 0, ai.z), gmLocal.aiTarget, _gpB); _gw.set(wp.x - ai.x, 0, wp.z - ai.z); const d = _gw.length(); // follow the maze
   const speed = (ai.st === 'chase' ? 3.4 : 1.8) * (wallAt(ai.x, ai.z) ? 0.45 : 1) * (GM.t < 8 ? 0 : 1); // waits 8 s at the start
   if (d > 0.05) { ai.x += _gw.x / d * Math.min(d, speed * dt); ai.z += _gw.z / d * Math.min(d, speed * dt); ai.yaw = Math.atan2(_gw.x, _gw.z); }
 }
@@ -3366,6 +3425,7 @@ const BOTS = Array.from({ length: 5 }, (_, i) => {
 const _bq2 = new THREE.Quaternion(), _bd2 = new THREE.Vector3();
 function botTo(b, p) { b.pos.copy(p); b.target.copy(p); b.ground = groundAt(p.x, p.z, 30); if (b.ground < -1e8) b.ground = 0; }
 function botBlocked(x, z, ground) { for (const b of solid) if (b.min.y < ground + 0.6 && b.max.y > ground + 0.75 && x > b.min.x - 0.2 && x < b.max.x + 0.2 && z > b.min.z - 0.2 && z < b.max.z + 0.2) return true; return false; }
+const _bwp = new THREE.Vector3();
 function updateBots(dt, t) {
   const btmOn = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play');
   for (const b of BOTS) {
@@ -3381,13 +3441,14 @@ function updateBots(dt, t) {
     if (b.mode === 'btm') {
       const mon = GM.monster === myId ? myPose.h : remotes.get(GM.monster)?.c.h;
       const d = mon ? Math.hypot(mon.x - b.pos.x, mon.z - b.pos.z) : 99;
-      if (mon && d < 10 && GM.t >= 12) { _bd2.set(b.pos.x - mon.x, 0, b.pos.z - mon.z).normalize(); b.target.set(b.pos.x + _bd2.x * 6 + (Math.random() - 0.5) * 2, 0, b.pos.z + _bd2.z * 6 + (Math.random() - 0.5) * 2); speed = 3.1; } // run!
+      if (mon && d < 10 && GM.t >= 12) { const [ci, cj] = cellOf(b.pos); let best = null, bd = -1; for (const [di, dj] of DIRS4) { if (!OPEN_EDGE.get(edgeKey(ci, cj, ci + di, cj + dj))) continue; const c = CELL(ci + di, cj + dj), dd = Math.hypot(c.x - mon.x, c.z - mon.z); if (dd > bd) { bd = dd; best = c; } } if (best) b.target.copy(best); speed = 3.1; } // run to the open room farthest from the monster
       else if (b.t <= 0) { b.t = 4 + Math.random() * 4; b.target.copy(OPEN_CELLS[Math.floor(Math.random() * OPEN_CELLS.length)]); }
       b.target.x = Math.max(MX - 31, Math.min(MX + 31, b.target.x)); b.target.z = Math.max(MZ - 31, Math.min(MZ + 20, b.target.z));
       if (wallAt(b.pos.x, b.pos.z)) speed *= 0.5;
     }
     if (b.mode === 'wait' || b.mode === 'out') speed = 0;
-    _bd2.set(b.target.x - b.pos.x, 0, b.target.z - b.pos.z); const dist = _bd2.length();
+    const goal = b.mode === 'btm' ? pathStep(b.pos, b.target, _bwp) : b.target; // in the maze: go around walls
+    _bd2.set(goal.x - b.pos.x, 0, goal.z - b.pos.z); const dist = _bd2.length();
     if (dist > 0.1 && speed > 0) { const st = Math.min(dist, speed * dt) / dist, nx = b.pos.x + _bd2.x * st, nz = b.pos.z + _bd2.z * st;
       if (b.mode === 'lobby' && botBlocked(nx, nz, b.ground)) { b.t = 0; b.target.copy(b.pos); } else { b.pos.x = nx; b.pos.z = nz; b.yaw = Math.atan2(-_bd2.x, -_bd2.z); } }
     b.walk += ((dist > 0.15 && speed > 0 ? Math.min(1, speed / 3) : 0) - b.walk) * (1 - Math.exp(-6 * dt));
@@ -3408,10 +3469,6 @@ function updateBots(dt, t) {
     // the BTM monster sees survivors glowing through the fog
     if (!b.glow) { b.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(b.glow); }
     b.glow.visible = b.mode === 'btm' && GM.monster === myId; if (b.glow.visible) b.glow.position.copy(p.h).add(_bd2.set(0, 0.35, 0));
-    // you (the monster) catch them by touching
-    if (false && b.mode === 'btm' && GM.monster === myId && GM.phase === 'play' && GM.t >= 12 && gmLocal.tagCd <= 0 && (myPose.h.distanceTo(p.h) < 0.65 * tagMul() || myPose.l.distanceTo(p.h) < 0.5 * tagMul() || myPose.r.distanceTo(p.h) < 0.5 * tagMul())) {
-      gmLocal.tagCd = 0.6; gmReport('gmtag', { id: b.id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); burst(p.h, 0xff3b6b);
-    }
   }
 }
 
@@ -3459,6 +3516,7 @@ function refreshSbEntries() { // portals to the next boss chapter: in the Lanter
 refreshSbEntries();
 function startBossChapter(n) {
   if (!n) return;
+  if (B.def && B.phase === 'dead') { setTimeout(() => startBossChapter(n), 1000); return; }
   if (B.def) { banner('THE ARENA IS BUSY', 'SOMEONE IS FIGHTING A BOSS. TRY AGAIN SOON', 2.5, '#ff8a3d'); return; }
   SB.active = n; teleport(AX - 7, 0.3, AZ + 6, -0.57);
   bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null;
@@ -3666,7 +3724,7 @@ logoVR.position.z = -0.19; logoVR.renderOrder = 2001; logoVR.visible = false; ca
 const lwFog = new THREE.FogExp2(0xf6f0ff, 0.035), lwBg = new THREE.Color(0xf6f0ff);
 function setLightWorld(on) {
   scene.fog = on ? lwFog : lightFog; scene.background = on ? lwBg : lightBg;
-  if (hemi) hemi.intensity = on ? 1.9 : 1.2; sun.intensity = on ? 1.3 : 1.0;
+  if (hemi) { hemi.intensity = on ? 1.9 : 1.2; hemi.color.set(on ? 0xffffff : 0x8a6cff); hemi.groundColor.set(on ? 0xe8e0ff : 0x1a0b2e); } sun.intensity = on ? 1.3 : 1.0;
   skyStuff ||= scene.children.filter(o => o.userData.sky || o.isPoints || o === beam || o === core || o === floaters || o === beacon || o === skyEye.root);
   for (const o of skyStuff) o.visible = !on;
 }
@@ -3698,7 +3756,7 @@ function updateIntro(dt, t) {
   } else if (INTRO.phase === 'out') { const k = Math.max(0, 1 - INTRO.t / 0.7); setIntroFade(k, k); if (k <= 0) { INTRO.active = false; setIntroFade(0, 0); } }
 }
 
-window.__boss = { INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+window.__boss = { pathStep, OPEN_EDGE, me, kb, kbKeys, hands, updateComp, BOSSES, renderer, INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
