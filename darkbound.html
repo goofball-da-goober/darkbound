@@ -42,6 +42,7 @@
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
   • <b>Battles (new!):</b> touch a roaming monster. Touch / 1-4: pick, swing / Space: slap, hand / WASD: dodge<br>
   • <b>Hat Stand:</b> by spawn, buy hats with bananas<br>
+  • <b>COMPUTAH:</b> east of spawn. Walk up, press <b>T</b> to type: name, room codes, color, turning, mic, volume, save codes<br>
   • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
   <hr>
@@ -283,6 +284,9 @@ for (const [x, z] of [[-6, -6], [6, -7], [-7, 5]]) addBox(B3X + x, 0.5, B3Z + z,
 const HAT_PEDS = [-7.6, -6.2, -4.8, -3.4].map(x => new THREE.Vector3(x, 0.9, 10.6));
 HAT_PEDS.forEach(p => addBox(p.x, 0, p.z, 0.7, 0.9, 0.7, COL.gold, EDGE.gold));
 
+// --- COMPUTAH desk (east of spawn) ---
+addBox(8.6, 0, 8, 0.7, 0.4, 1.5, COL.stoneHi, EDGE.cyan);
+
 buildMeshes();
 
 // --- the Rift: a pillar of light with rising sparks ---
@@ -420,6 +424,8 @@ function ensureAudio() {
   if (actx && actx.state === 'suspended') actx.resume();
 }
 addEventListener('pointerdown', ensureAudio);
+let _sfxOut = null;
+function sfxOut() { if (!_sfxOut) { _sfxOut = actx.createGain(); _sfxOut.connect(actx.destination); } _sfxOut.gain.value = SET.sfxVol / 5; return _sfxOut; }
 function tap(strength) {
   if (!actx) return;
   const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
@@ -428,7 +434,7 @@ function tap(strength) {
   o.frequency.exponentialRampToValueAtTime(60, t + 0.09);
   g.gain.setValueAtTime(Math.min(0.5, 0.1 + strength * 0.25), t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.13);
+  o.connect(g).connect(sfxOut()); o.start(t); o.stop(t + 0.13);
 }
 function onTouch(h, speed) {
   const now = performance.now();
@@ -503,15 +509,17 @@ function updateXR(dt) {
     const gp = h.source.gamepad; if (!gp) continue;
     if (h.source.handedness === 'right') {
       const x = gp.axes[2] ?? 0;
-      if (turnReady && Math.abs(x) > 0.7) { snapTurn(-Math.sign(x) * Math.PI / 6); turnReady = false; }
-      if (Math.abs(x) < 0.3) turnReady = true;
+      if (SET.turn === 'smooth') { if (Math.abs(x) > 0.2) { headWorld(_h); rig.rotateY(-x * 2.4 * dt); headWorld(_p); rig.position.add(_h.sub(_p)); } }
+      else { if (turnReady && Math.abs(x) > 0.7) { snapTurn(-Math.sign(x) * (SET.turn === 'snap45' ? Math.PI / 4 : Math.PI / 6)); turnReady = false; }
+      if (Math.abs(x) < 0.3) turnReady = true; }
     }
     if (gp.buttons[5]?.pressed) anyRespawn = true;
     if (h.source.handedness === 'left' && gp.buttons[4]?.pressed) anyMute = true; // X button
   }
   if (anyRespawn && !respawnHeld) respawn();
   respawnHeld = anyRespawn;
-  if (anyMute && !muteHeld) toggleMic();
+  if (SET.mic === 'ptt') { if (voice.stream && voice.muted === anyMute) setMuted(!anyMute); }
+  else if (SET.mic === 'open') { if (anyMute && !muteHeld) toggleMic(); }
   muteHeld = anyMute;
 }
 
@@ -528,7 +536,7 @@ addEventListener('mousemove', e => {
 });
 function updateDesktop(dt) {
   camera.rotation.set(pitch, yaw, 0, 'YXZ');
-  const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const f = Math.max(-1, Math.min(1, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - TOUCH.y)), s = Math.max(-1, Math.min(1, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + TOUCH.x));
   const sp = keys.ShiftLeft || keys.ShiftRight ? 11 : 6;
   const tx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, tz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
   const k = 1 - Math.exp(-(grounded ? 14 : 3) * dt);
@@ -546,10 +554,18 @@ addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth 
 // ================= MULTIPLAYER (PeerJS: first player in a room hosts, others join) =================
 const params = new URLSearchParams(location.search);
 const SPECTATE = params.has('cam'); // PC Dark Cam viewer: watch (not play)
-const ROOM = (params.get('room') || 'lobby').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
-const ROOM_ID = 'darkbound-v1-' + ROOM;
+let ROOM = (params.get('room') || 'lobby').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
+let ROOM_ID = 'darkbound-v1-' + ROOM;
 const PALETTE = [0xff5c8a, 0x5ef2ff, 0xffd447, 0x9b5cff, 0x6dff8a, 0xff8a3d];
-const MY_COLOR = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+// your saved info (name, color, turning, mic, volume) — set on the COMPUTAH
+const SET = Object.assign({ name: '', color: null, turn: 'snap30', mic: 'open', voiceVol: 5, sfxVol: 5 }, (() => { try { return JSON.parse(localStorage.getItem('darkbound-settings') || '{}'); } catch (e) { return {}; } })());
+const saveSettings = () => { try { localStorage.setItem('darkbound-settings', JSON.stringify(SET)); } catch (e) { } };
+let MY_COLOR = SET.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)];
+// what are you playing on? (VR headset, computer, phone or tablet)
+const UA = navigator.userAgent;
+let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
+let DEVICE_NAME = DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
+const TOUCH = { x: 0, y: 0 }; // phone joystick
 const myId = Math.random().toString(36).slice(2, 10);
 const net = { peer: null, isHost: false, conns: new Map(), hostConn: null, status: 'connecting…' };
 const remotes = new Map();
@@ -650,19 +666,28 @@ function makeGorilla(color) {
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
-  let selfHidden = false, hatObj = null;
+  let selfHidden = false, hatObj = null, tag = null, tagName = '';
 
   return {
     root, head, body,
     // first person: hide your own body + shoulders (they'd block your view); arms and hands stay
-    setSelfView(fp) { selfHidden = fp; body.visible = !fp; neck.visible = !fp; for (const A of arms) A.shoulder.visible = !fp; },
+    setSelfView(fp) { selfHidden = fp; body.visible = !fp; neck.visible = !fp; if (tag) tag.visible = !fp && !!tagName; for (const A of arms) A.shoulder.visible = !fp; },
     get selfHidden() { return selfHidden; },
+    setName(n) {
+      tagName = n || '';
+      if (!tag) { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tag = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.09), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })); tag.userData.cv = cv; root.add(tag); }
+      const cx = tag.userData.cv.getContext('2d'); cx.clearRect(0, 0, 256, 64);
+      if (tagName) { cx.fillStyle = 'rgba(10,5,25,0.75)'; cx.fillRect(0, 8, 256, 48); cx.fillStyle = '#fff'; cx.font = 'bold 34px monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(tagName, 128, 33); }
+      tag.material.map.needsUpdate = true; tag.visible = !!tagName && !selfHidden;
+    },
+    setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p, dt = 1 / 60) {
       head.position.copy(p.h); head.quaternion.copy(p.q);
       if (hatObj?.userData.spin) hatObj.userData.spin.rotation.y += dt * 12;
+      if (tag) { tag.position.set(p.h.x, p.h.y + 0.33, p.h.z); tag.quaternion.copy(myPose.q); } // name floats over your head
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
       // --- body gravity ---
       _neck.copy(p.h); _neck.y -= 0.17;
@@ -710,6 +735,8 @@ function applyState(d) {
   t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
   if (d.kf) r.kf = d.kf; r.color = d.c;
+  if (d.c !== undefined && d.c !== r.fur) { if (r.fur !== undefined) r.g.setColor(d.c); r.fur = d.c; }
+  if (typeof d.nm === 'string' && d.nm !== r.nm) { r.nm = d.nm; r.g.setName(cleanName(d.nm)); }
   if (typeof d.ht === 'string' && d.ht !== r.hat) { r.hat = d.ht; r.g.setHat(d.ht || null); }
   if (d.kp && d.kq) { (r.kp ||= new THREE.Vector3()).fromArray(d.kp); (r.kq ||= new THREE.Quaternion()).fromArray(d.kq); }
   if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
@@ -952,7 +979,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '' };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '', nm: SET.name || '' };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -1016,7 +1043,7 @@ async function enableMic() {
   voice.state = 'asking'; drawBoard();
   try {
     voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    voice.state = 'on'; setMuted(false);
+    voice.state = 'on'; setMuted(SET.mic !== 'open');
     for (const [pid, c] of [...voice.calls]) if (!c.sentAudio) { voice.calls.delete(pid); c.close(); } // re-call so they hear us
     for (const r of remotes.values()) if (r.pid) callPeer(r.pid);
   } catch (e) { voice.state = 'denied'; }
@@ -1052,7 +1079,7 @@ function attachVoice(pid, stream) {
   const src = actx.createMediaStreamSource(stream);
   const panner = actx.createPanner();
   panner.panningModel = 'HRTF'; panner.distanceModel = 'inverse'; panner.refDistance = 1.2; panner.maxDistance = 40; panner.rolloffFactor = 1.4;
-  const gain = actx.createGain(); gain.gain.value = 1.6;
+  const gain = actx.createGain(); gain.gain.value = 1.6 * SET.voiceVol / 5;
   const an = actx.createAnalyser(); an.fftSize = 256;
   src.connect(an); src.connect(panner); panner.connect(gain); gain.connect(actx.destination);
   voices.set(pid, { el, src, panner, gain, an, buf: new Uint8Array(an.fftSize), level: 0 });
@@ -1266,7 +1293,7 @@ function sfx(f0, f1, dur, type = 'sawtooth', vol = 0.2, delay = 0) {
   const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(sfxOut()); o.start(t); o.stop(t + dur + 0.02);
 }
 
 // ---------- HUD: banner + health (VR panels on your face, HTML on a computer) ----------
@@ -2500,6 +2527,7 @@ function endBattle(result) {
   if (BT.model) { btRoot.remove(BT.model.root); scene.remove(BT.model.root); BT.model = null; }
   const r = BT.roam;
   if (r) { if (result === 'lose') { r.model.root.visible = true; r.cd = 6; } else { r.alive = false; r.respawn = 60; } }
+  if (result === 'win' || result === 'chill') { try { localStorage.setItem('darkbound-wins', String((+localStorage.getItem('darkbound-wins') || 0) + 1)); } catch (e) { } }
   if (result === 'win') addBananas(5, 'YOU WON THE BATTLE');
   if (result === 'chill') addBananas(8, 'YOU MADE A FRIEND (PEACE BONUS)');
   if (result === 'lose') { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('YOU GOT BONKED', 'BACK TO SPAWN. TRY TALKING NEXT TIME?', 2.5, '#ff3b6b'); }
@@ -2597,7 +2625,7 @@ function updateBattle(dt, t) {
   if (BT.phase === 'dodge') {
     // steer the spark: your right hand (VR) or WASD / arrows (PC)
     if (xr) { const h = hands.find(x => x.source?.handedness === 'right') || hands.find(x => x.source); if (h) { btRoot.worldToLocal(_btv.copy(h.last)); BT.sx = 150 + _btv.x / BU; BT.sy = 150 - _btv.y / BU; } }
-    else { const sp = 150 * dt, K = BT.keys; BT.sx += ((K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0)) * sp; BT.sy += ((K.KeyS || K.ArrowDown ? 1 : 0) - (K.KeyW || K.ArrowUp ? 1 : 0)) * sp; }
+    else { const sp = 150 * dt, K = BT.keys; BT.sx += ((K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + TOUCH.x) * sp; BT.sy += ((K.KeyS || K.ArrowDown ? 1 : 0) - (K.KeyW || K.ArrowUp ? 1 : 0) + TOUCH.y) * sp; }
     BT.sx = Math.max(7, Math.min(293, BT.sx)); BT.sy = Math.max(7, Math.min(293, BT.sy));
     btLocal(BT.sx, BT.sy, btSpark.position); btSpark.position.z = 0.012; btSpark.rotation.y += dt * 4; btSpark.visible = BT.inv <= 0 || Math.floor(t * 16) % 2 === 0;
     BT.t += dt;
@@ -2663,7 +2691,222 @@ function updateRoam(dt, t) {
   }
 }
 
-window.__boss = { btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= COMPUTAH (names, room codes, colors, settings, save codes) =================
+const COMP_MENU = ['ROOM', 'NAME', 'COLOR', 'TURN', 'MIC', 'VOLUME', 'SAVE CODE', 'STATS', 'CREDITS'];
+const CP = { sel: 0, input: '', ch: 0, vch: 0, msg: '', msgT: 0, typing: false, hintT: 0, redrawT: 0, playT: 0, rgb: [5, 5, 5] };
+const cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+const rgbOf = hex => { const c = new THREE.Color(hex); return [Math.round(c.r * 9), Math.round(c.g * 9), Math.round(c.b * 9)]; };
+const hexOf = ([r, g, b]) => (Math.round(r / 9 * 255) << 16) | (Math.round(g / 9 * 255) << 8) | Math.round(b / 9 * 255);
+CP.rgb = rgbOf(MY_COLOR);
+const comp = new THREE.Group(); comp.position.set(8.25, 0.4, 8); comp.rotation.y = -Math.PI / 2; scene.add(comp); // faces back toward spawn
+// monitor
+part(comp, new THREE.BoxGeometry(0.06, 0.32, 0.06), toon(0x2b2346, 0.1), [0, 0.16, -0.55], null, 0.006);
+part(comp, new THREE.BoxGeometry(1.08, 0.66, 0.06), toon(0x1b1530, 0.1), [0, 0.62, -0.58], null, 0.01);
+const compCv = document.createElement('canvas'); compCv.width = 1024; compCv.height = 640;
+const compTex = new THREE.CanvasTexture(compCv); compTex.colorSpace = THREE.SRGBColorSpace;
+const compScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.625), new THREE.MeshBasicMaterial({ map: compTex })); compScreen.position.set(0, 0.62, -0.548); comp.add(compScreen);
+{ const lab = labelTex(null, 512, 96); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.9)'; c.fillRect(0, 0, 512, 96); c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 506, 90); c.fillStyle = '#5ef2ff'; c.font = 'bold 60px monospace'; c.textAlign = 'center'; c.fillText('COMPUTAH', 256, 70); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.13), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.04, -0.57); comp.add(m); }
+// keyboard: press the keys with your hands (VR), tap them (phone), or press T to type (PC)
+const kb = new THREE.Group(); kb.position.set(0, 0.012, -0.2); kb.rotation.x = -Math.PI / 2 + 0.12; comp.add(kb);
+const KB_ROWS = [['1234567890', 'DEL'], ['QWERTYUIOP', 'ENTER'], ['ASDFGHJKL', 'UP'], ['ZXCVBNM', 'DOWN']];
+const kbKeys = [];
+function makeKey(label, x, y, w) {
+  const cv = document.createElement('canvas'); cv.width = w > 0.06 ? 160 : 72; cv.height = 72; const c = cv.getContext('2d');
+  const special = label.length > 1, col = label.startsWith('OPT') ? '#ffd447' : special ? '#5ef2ff' : '#ffffff';
+  c.fillStyle = '#1b1232'; c.fillRect(0, 0, cv.width, 72); c.strokeStyle = col; c.lineWidth = 4; c.strokeRect(2, 2, cv.width - 4, 68);
+  c.fillStyle = col; c.font = 'bold ' + (special ? 30 : 44) + 'px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText({ UP: '▲', DOWN: '▼', OPT1: 'OPT 1', OPT2: 'OPT 2', OPT3: 'OPT 3' }[label] || label, cv.width / 2, 38);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const g = new THREE.Group(); g.position.set(x, y, 0); kb.add(g);
+  part(g, new THREE.BoxGeometry(w, 0.052, 0.018), toon(0x2b2346, 0.12), [0, 0, 0.009], null, 0.003);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.006, 0.046), new THREE.MeshBasicMaterial({ map: tex })); top.position.z = 0.0185; g.add(top);
+  const k = { label, g, x, y, w, hw: w / 2, top, down: 0 }; top.userData.compKey = k; kbKeys.push(k); return k;
+}
+KB_ROWS.forEach(([chars, extra], r) => {
+  const y = 0.12 - r * 0.06, x0 = -0.33 + r * 0.02;
+  [...chars].forEach((ch, i) => makeKey(ch, x0 + i * 0.06, y, 0.052));
+  makeKey(extra, x0 + chars.length * 0.06 + 0.03, y, 0.1);
+});
+['OPT1', 'OPT2', 'OPT3'].forEach((o, i) => makeKey(o, -0.13 + i * 0.13, -0.12, 0.11));
+// ---- settings that apply live ----
+function applyVolumes() { for (const v of voices.values()) v.gain.gain.value = 1.6 * SET.voiceVol / 5; if (_sfxOut) _sfxOut.gain.value = SET.sfxVol / 5; }
+function applyMic() { if (!voice.stream) return; setMuted(SET.mic !== 'open'); }
+function switchRoom(code) {
+  code = (code || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
+  if (code === ROOM) { CP.msg = 'YOU ARE ALREADY IN ' + code.toUpperCase(); return; }
+  ROOM = code; ROOM_ID = 'darkbound-v1-' + ROOM;
+  try { const u = new URL(location.href); if (ROOM === 'lobby') u.searchParams.delete('room'); else u.searchParams.set('room', ROOM); history.replaceState(null, '', u); } catch (e) { }
+  if (B.def) clearBoss();
+  resetNet(300); CP.msg = 'JOINING ' + ROOM.toUpperCase() + '...'; banner('JOINING ROOM', ROOM.toUpperCase(), 2, '#5ef2ff');
+}
+// ---- save codes: carry bananas, hats, bosses and story to another device ----
+// save-code letters: no O, I, L or U, so nothing looks alike (typing O counts as 0, I or L as 1)
+const CODE_ABC = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const enc32 = n => { let s = ''; do { s = CODE_ABC[n % 32] + s; n = Math.floor(n / 32); } while (n > 0); return s; };
+const dec32 = str => { let n = 0; for (const ch of str.toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1')) { const i = CODE_ABC.indexOf(ch); if (i < 0) return NaN; n = n * 32 + i; } return n; };
+const isDone = k => { try { return localStorage.getItem(k) === 'done'; } catch (e) { return false; } };
+function makeSaveCode() {
+  let bits = 0;
+  if (isDone('darkbound-story-1')) bits |= 1; if (isDone('darkbound-story-2')) bits |= 2; if (isDone('darkbound-story-25')) bits |= 4;
+  ['warden', 'witch', 'colossus'].forEach((id, i) => { if (defeated.has(id)) bits |= 8 << i; });
+  HATS.forEach((h, i) => { if (hatSave.owned.includes(h.id)) bits |= 64 << i; });
+  const n = Math.min(99999, Math.max(0, bananas)) * 1024 + bits, full = n * 37 + (n * 7 + 3) % 37;
+  return enc32(full).replace(/(.{4})(?=.)/g, '$1-');
+}
+function loadSaveCode(code) {
+  const s = String(code || '').replace(/[^0-9A-Z]/gi, ''); if (!s) return 'TYPE A CODE FIRST';
+  const full = dec32(s); if (!isFinite(full) || full < 0) return 'THAT CODE IS BROKEN';
+  const n = Math.floor(full / 37); if ((n * 7 + 3) % 37 !== full % 37) return 'THAT CODE IS WRONG. CHECK IT AGAIN.';
+  const bits = n % 1024, b = Math.floor(n / 1024);
+  bananas = b; addBananas(0);
+  const setDone = (k, on) => { try { if (on) localStorage.setItem(k, 'done'); } catch (e) { } };
+  setDone('darkbound-story-1', bits & 1); setDone('darkbound-story-2', bits & 2); setDone('darkbound-story-25', bits & 4);
+  if (bits & 1) { STORY.done = true; showC2Entry(); } if (bits & 2) { C2.done = true; showCampEntries(); } if (bits & 4) B3.done = true;
+  ['warden', 'witch', 'colossus'].forEach((id, i) => { if (bits & (8 << i)) defeated.add(id); }); saveDefeated();
+  HATS.forEach((h, i) => { if (bits & (64 << i) && !hatSave.owned.includes(h.id)) hatSave.owned.push(h.id); }); saveHats();
+  for (const x of hatStand) x.state = ''; for (const p of peds) p.state = '';
+  return 'LOADED! ' + b + ' BANANAS AND YOUR PROGRESS';
+}
+// ---- pressing keys ----
+function compKey(k) {
+  sfx(900 + Math.random() * 200, 700, 0.04, 'square', 0.06);
+  const menu = COMP_MENU[CP.sel];
+  if (k === 'UP' || k === 'DOWN') { CP.sel = (CP.sel + (k === 'UP' ? COMP_MENU.length - 1 : 1)) % COMP_MENU.length; CP.input = ''; CP.msg = ''; if (COMP_MENU[CP.sel] === 'COLOR') CP.rgb = rgbOf(MY_COLOR); }
+  else if (k === 'DEL') CP.input = CP.input.slice(0, -1);
+  else if (k === 'ENTER') compEnter(menu);
+  else if (k.startsWith('OPT')) compOpt(menu, +k[3]);
+  else if (menu === 'COLOR' && /[0-9]/.test(k)) { CP.rgb[CP.ch] = +k; me.setColor(hexOf(CP.rgb)); CP.msg = 'PRESS ENTER TO SAVE THIS COLOR'; }
+  else if (menu === 'VOLUME' && /[0-9]/.test(k)) { if (CP.vch === 0) SET.voiceVol = +k; else SET.sfxVol = +k; saveSettings(); applyVolumes(); CP.msg = 'SAVED'; }
+  else if (CP.input.length < 12) CP.input += k;
+  drawComp();
+}
+function compEnter(menu) {
+  if (menu === 'ROOM') { if (!CP.input) CP.msg = 'TYPE A ROOM CODE FIRST'; else { switchRoom(CP.input); CP.input = ''; } }
+  else if (menu === 'NAME') { const n = cleanName(CP.input); if (!n) { CP.msg = 'TYPE A NAME FIRST'; return; } SET.name = n; saveSettings(); me.setName(n); CP.input = ''; CP.msg = 'HI, ' + n + '! NAME SAVED'; }
+  else if (menu === 'COLOR') { MY_COLOR = hexOf(CP.rgb); SET.color = MY_COLOR; saveSettings(); me.setColor(MY_COLOR); CP.msg = 'COLOR SAVED. LOOKING FRESH'; }
+  else if (menu === 'SAVE CODE') { if (!CP.input) CP.msg = 'TYPE A CODE FROM ANOTHER DEVICE, THEN ENTER'; else { CP.msg = loadSaveCode(CP.input); CP.input = ''; } }
+}
+function compOpt(menu, o) {
+  if (menu === 'ROOM') { if (o === 1) switchRoom('lobby'); if (o === 2) { CP.input = Math.random().toString(36).slice(2, 7).toUpperCase(); CP.msg = 'PRESS ENTER TO JOIN IT'; } }
+  if (menu === 'NAME' && o === 1) { SET.name = ''; saveSettings(); me.setName(''); CP.msg = 'NAME CLEARED'; }
+  if (menu === 'COLOR') { CP.ch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
+  if (menu === 'TURN') { SET.turn = ['snap30', 'snap45', 'smooth'][o - 1]; saveSettings(); CP.msg = 'SAVED'; }
+  if (menu === 'MIC') { SET.mic = ['open', 'ptt', 'off'][o - 1]; saveSettings(); applyMic(); CP.msg = 'SAVED'; }
+  if (menu === 'VOLUME') { CP.vch = o === 2 ? 1 : 0; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
+}
+// ---- the screen ----
+function drawComp() {
+  const c = compCv.getContext('2d'), W = 1024, H = 640, menu = COMP_MENU[CP.sel];
+  c.fillStyle = '#07040f'; c.fillRect(0, 0, W, H); c.strokeStyle = '#5ef2ff'; c.lineWidth = 8; c.strokeRect(4, 4, W - 8, H - 8);
+  c.fillStyle = '#5ef2ff'; c.fillRect(4, 4, W - 8, 56); c.fillStyle = '#07040f'; c.font = 'bold 28px monospace'; c.textBaseline = 'middle';
+  c.fillText('COMPUTAH • ' + VERSION + '  ROOM: ' + ROOM.toUpperCase() + '  PLAYERS: ' + (remotes.size + 1), 20, 33);
+  COMP_MENU.forEach((m, i) => { const on = i === CP.sel; c.fillStyle = on ? '#ffd447' : '#8f80b8'; c.font = 'bold 34px monospace'; c.fillText((on ? '> ' : '  ') + m, 20, 105 + i * 52); });
+  c.strokeStyle = '#2f2252'; c.lineWidth = 4; c.beginPath(); c.moveTo(300, 70); c.lineTo(300, 570); c.stroke();
+  const x = 325; let y = 100; const line = (t, col = '#ffffff', size = 30) => { c.fillStyle = col; c.font = 'bold ' + size + 'px monospace'; c.fillText(t, x, y); y += size + 16; };
+  const field = label => { line(label, '#cbbcf0', 26); c.fillStyle = '#1b1232'; c.fillRect(x, y - 18, 640, 56); c.strokeStyle = '#ffd447'; c.strokeRect(x, y - 18, 640, 56); c.fillStyle = '#ffd447'; c.font = 'bold 38px monospace'; c.fillText(CP.input + (Math.floor(performance.now() / 500) % 2 ? '_' : ''), x + 14, y + 10); y += 70; };
+  const choice = (opts, cur) => opts.forEach(([k, label], i) => line('OPT ' + (i + 1) + ': ' + label + (k === cur ? '  <<' : ''), k === cur ? '#6dff9a' : '#ffffff', 28));
+  if (menu === 'ROOM') { line('YOU ARE IN: ' + ROOM.toUpperCase(), '#5ef2ff'); line('PLAYERS HERE: ' + (remotes.size + 1) + '   ' + net.status.toUpperCase(), '#cbbcf0', 24); field('TYPE A ROOM CODE, THEN ENTER:'); line('OPT 1: BACK TO LOBBY', '#ffffff', 26); line('OPT 2: MAKE A RANDOM CODE', '#ffffff', 26); line('SHARE THE CODE WITH FRIENDS!', '#6dff9a', 24); }
+  if (menu === 'NAME') { line('YOUR NAME: ' + (SET.name || '(NONE)'), '#5ef2ff'); line('EVERYONE SEES IT OVER YOUR HEAD', '#cbbcf0', 24); field('TYPE A NAME (A-Z, 0-9), THEN ENTER:'); line('OPT 1: CLEAR MY NAME', '#ffffff', 26); }
+  if (menu === 'COLOR') {
+    ['RED', 'GREEN', 'BLUE'].forEach((n, i) => { const on = CP.ch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = 'bold 30px monospace'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k <= CP.rgb[i] ? ['#ff3b3b', '#3bff6a', '#3b7bff'][i] : '#2a1640'; c.fillRect(x + 290 + k * 30, y - 16, 24, 32); } c.fillStyle = '#fff'; c.fillText(String(CP.rgb[i]), x + 600, y); y += 58; });
+    c.fillStyle = '#' + new THREE.Color(hexOf(CP.rgb)).getHexString(); c.fillRect(x, y, 200, 90); c.strokeStyle = '#fff'; c.strokeRect(x, y, 200, 90); y += 130;
+    line('PICK RED/GREEN/BLUE, PRESS 0-9, THEN ENTER', '#cbbcf0', 24);
+  }
+  if (menu === 'TURN') { line('HOW THE RIGHT STICK TURNS YOU', '#5ef2ff', 28); choice([['snap30', 'SNAP 30°'], ['snap45', 'SNAP 45°'], ['smooth', 'SMOOTH']], SET.turn); }
+  if (menu === 'MIC') { line('VOICE CHAT', '#5ef2ff', 28); choice([['open', 'OPEN MIC (X = MUTE)'], ['ptt', 'PUSH TO TALK (HOLD X)'], ['off', 'MUTED']], SET.mic); }
+  if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS'].forEach((n, i) => { const v = i ? SET.sfxVol : SET.voiceVol, on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = 'bold 30px monospace'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
+  if (menu === 'SAVE CODE') { line('YOUR SAVE CODE:', '#cbbcf0', 26); line(makeSaveCode(), '#ffd447', 54); line('TYPE IT ON YOUR OTHER DEVICE TO', '#cbbcf0', 24); line('BRING YOUR BANANAS, HATS, BOSSES & STORY', '#cbbcf0', 24); field('GOT A CODE? TYPE IT, THEN ENTER:'); }
+  if (menu === 'STATS') { const wins = (() => { try { return +localStorage.getItem('darkbound-wins') || 0; } catch (e) { return 0; } })(), mins = Math.floor(((() => { try { return +localStorage.getItem('darkbound-time') || 0; } catch (e) { return 0; } })() + CP.playT) / 60);
+    [['DEVICE', DEVICE_NAME], ['BANANAS', bananas], ['BATTLES WON', wins], ['BOSSES BEATEN', defeated.size + ' / 3'], ['STORY', [isDone('darkbound-story-1') && '1', isDone('darkbound-story-2') && '2', isDone('darkbound-story-25') && '2.5'].filter(Boolean).join(', ') || 'NOT STARTED'], ['HATS', hatSave.owned.length + ' / ' + HATS.length], ['PLAY TIME', mins + ' MIN']].forEach(([k, v]) => line(k + ': ' + v, '#ffffff', 28)); }
+  if (menu === 'CREDITS') { line('DARKBOUND', '#5ef2ff', 44); line('A GORILLA VR GAME', '#cbbcf0', 26); line('IDEAS, STORY, BOSSES & LORE: THE CREATOR', '#ffffff', 24); line('CODE HELP: CLAUDE', '#ffffff', 24); line('THE EYE WAKES UP IN v2.5', '#ff5c8a', 24); line('THANKS FOR PLAYING!', '#6dff9a', 28); }
+  if (CP.msg) { c.fillStyle = '#6dff9a'; c.font = 'bold 28px monospace'; c.fillText(CP.msg, 325, 560); }
+  c.fillStyle = '#8f80b8'; c.font = 'bold 22px monospace';
+  c.fillText(DEVICE === 'pc' ? (CP.typing ? 'TYPING! ARROWS: MENU  , . / : OPT 1-3  ESC: STOP' : 'PRESS T NEAR THE COMPUTAH TO TYPE') : DEVICE === 'mobile' ? 'TAP THE KEYS TO TYPE' : 'PRESS THE KEYS WITH YOUR HANDS', 20, 610);
+  compTex.needsUpdate = true;
+}
+// PC: press T near the computer to type on it with your real keyboard
+const nearComp = () => myPose.h.distanceTo(_cpv.set(8.25, 0.6, 8)) < 2.4;
+const _cpv = new THREE.Vector3();
+addEventListener('keydown', e => {
+  if (!CP.typing) { if (e.code === 'KeyT' && nearComp() && !BT.active) { CP.typing = true; for (const k in keys) keys[k] = false; drawComp(); banner('TYPING ON THE COMPUTAH', 'ESC TO STOP', 1.5, '#5ef2ff'); e.stopImmediatePropagation(); } return; }
+  e.stopImmediatePropagation(); e.preventDefault();
+  if (e.code === 'Escape' || !nearComp()) { CP.typing = false; drawComp(); return; }
+  const map = { ArrowUp: 'UP', ArrowDown: 'DOWN', Backspace: 'DEL', Enter: 'ENTER', Comma: 'OPT1', Period: 'OPT2', Slash: 'OPT3' };
+  const byKey = { ',': 'OPT1', '.': 'OPT2', '/': 'OPT3', '<': 'OPT1', '>': 'OPT2', '?': 'OPT3' }[e.key];
+  if (map[e.code]) compKey(map[e.code]);
+  else if (byKey) compKey(byKey);
+  else if (/^Key[A-Z]$/.test(e.code)) compKey(e.code.slice(3));
+  else if (/^Digit[0-9]$/.test(e.code)) compKey(e.code.slice(5));
+}, true);
+function updateComp(dt, t) {
+  CP.playT += dt; CP.redrawT -= dt;
+  if (CP.playT > 10) { try { localStorage.setItem('darkbound-time', String((+localStorage.getItem('darkbound-time') || 0) + CP.playT)); } catch (e) { } CP.playT = 0; }
+  if (CP.redrawT <= 0) { CP.redrawT = 0.5; drawComp(); }
+  if (CP.typing && !nearComp()) { CP.typing = false; drawComp(); }
+  if (!CP.typing && DEVICE === 'pc' && nearComp() && (CP.hintT -= dt) <= 0) { CP.hintT = 12; banner('COMPUTAH', 'PRESS T TO TYPE', 1.6, '#5ef2ff'); }
+  for (const k of kbKeys) { k.down = Math.max(0, k.down - dt); k.g.position.z = k.down > 0 ? -0.008 : 0; }
+  if (!renderer.xr.isPresenting) return;
+  for (const h of hands) { // VR: push a key down with your hand
+    if (!h.source) { h.compKey = null; continue; }
+    kb.worldToLocal(_cpv.copy(h.last)); let hit = null;
+    if (_cpv.z < 0.09 && _cpv.z > -0.05) for (const k of kbKeys) if (Math.abs(_cpv.x - k.x) < k.hw && Math.abs(_cpv.y - k.y) < 0.028) { hit = k; break; }
+    if (hit && hit !== h.compKey && hit.down <= 0) { hit.down = 0.15; compKey(hit.label); h.source.gamepad?.hapticActuators?.[0]?.pulse?.(0.3, 20); }
+    h.compKey = hit;
+  }
+}
+drawComp();
+if (SET.name) me.setName(SET.name);
+
+// ================= DEVICE CHECK + PHONE / TABLET CONTROLS =================
+setTimeout(() => banner('DEVICE: ' + DEVICE_NAME, DEVICE === 'mobile' ? 'TOUCH CONTROLS ON' : DEVICE === 'vr' ? 'VR MODE' : 'KEYBOARD + MOUSE', 2.5, '#5ef2ff'), 1200);
+const tapTargets = () => [...kbKeys.map(k => k.top), ...(BT.active ? btBtns.map(b => b.m) : [])];
+const _ray = new THREE.Raycaster(), _rayP = new THREE.Vector2();
+function tapAt(px, py) { // tap a 3D key or battle button on the screen
+  _rayP.set(px / innerWidth * 2 - 1, -(py / innerHeight) * 2 + 1);
+  _ray.setFromCamera(_rayP, thirdPerson ? thirdCam : camera);
+  const hit = _ray.intersectObjects(tapTargets(), false)[0]; if (!hit) return false;
+  const k = hit.object.userData.compKey; if (k) { k.down = 0.15; compKey(k.label); return true; }
+  const bi = btBtns.findIndex(b => b.m === hit.object); if (bi >= 0 && btBtns[bi].enabled) { btChoose(bi); return true; }
+  return false;
+}
+if (DEVICE === 'mobile') {
+  document.getElementById('hud').style.display = 'none';
+  const css = document.createElement('style');
+  css.textContent = `#touch{position:fixed;inset:0;z-index:6;pointer-events:none;font:bold 15px ui-monospace,Consolas,monospace;color:#fff;-webkit-user-select:none;user-select:none}
+#joy{position:absolute;left:max(18px,env(safe-area-inset-left,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));width:140px;height:140px;border-radius:50%;background:rgba(94,242,255,.12);border:3px solid rgba(94,242,255,.6);pointer-events:auto;touch-action:none}
+#nub{position:absolute;left:45px;top:45px;width:50px;height:50px;border-radius:50%;background:rgba(94,242,255,.7)}
+#tbtns{position:absolute;right:max(14px,env(safe-area-inset-right,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(2,72px);gap:10px;pointer-events:auto}
+#tbtns button{height:62px;border-radius:14px;border:3px solid #ffd447;background:rgba(20,10,40,.75);color:#ffd447;font:bold 15px ui-monospace,Consolas,monospace;touch-action:none}
+#tbtns button:active{background:#ffd447;color:#1a0b2e}
+#thelp{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:max(10px,env(safe-area-inset-top,0px));background:rgba(10,5,25,.7);border:2px solid #9b5cff;border-radius:8px;padding:5px 9px;max-width:60vw}`;
+  document.head.appendChild(css);
+  const ui = document.createElement('div'); ui.id = 'touch';
+  ui.innerHTML = '<div id="thelp">DARKBOUND • ' + DEVICE_NAME + '<br>Stick: move • Drag: look • Tap keys & buttons</div><div id="joy"><div id="nub"></div></div><div id="tbtns"><button data-k="jump">JUMP</button><button data-k="KeyE">ACT</button><button data-k="KeyC">VIEW</button><button data-k="KeyV">CAM</button></div>';
+  document.body.appendChild(ui);
+  setTimeout(() => { const b = document.querySelector('#VRButton'); if (b) b.style.display = 'none'; }, 1500);
+  const joy = ui.querySelector('#joy'), nub = ui.querySelector('#nub'); let joyId = null;
+  const joyMove = e => { const r = joy.getBoundingClientRect(); let dx = (e.clientX - r.left - 70) / 55, dy = (e.clientY - r.top - 70) / 55; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } TOUCH.x = dx; TOUCH.y = dy; nub.style.transform = `translate(${dx * 45}px,${dy * 45}px)`; };
+  joy.addEventListener('pointerdown', e => { joyId = e.pointerId; joy.setPointerCapture(e.pointerId); joyMove(e); });
+  joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
+  const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; TOUCH.x = TOUCH.y = 0; nub.style.transform = ''; };
+  joy.addEventListener('pointerup', joyEnd); joy.addEventListener('pointercancel', joyEnd);
+  ui.querySelectorAll('#tbtns button').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault(); ensureAudio(); const k = b.dataset.k;
+    if (k === 'jump') { keys.Space = true; setTimeout(() => { keys.Space = false; }, 160); if (BT.active) btSlap(); }
+    else { dispatchEvent(new KeyboardEvent('keydown', { code: k })); setTimeout(() => dispatchEvent(new KeyboardEvent('keyup', { code: k })), 100); }
+  }));
+  // drag anywhere else to look; a quick tap presses whatever 3D key/button you tapped
+  const looks = new Map(); const cvs = renderer.domElement; cvs.style.touchAction = 'none';
+  cvs.addEventListener('pointerdown', e => { ensureAudio(); looks.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() }); });
+  cvs.addEventListener('pointermove', e => { const l = looks.get(e.pointerId); if (!l) return; yaw -= (e.clientX - l.x) * 0.006; pitch = Math.max(-1.4, Math.min(1.4, pitch - (e.clientY - l.y) * 0.006)); l.x = e.clientX; l.y = e.clientY; });
+  const lookEnd = e => { const l = looks.get(e.pointerId); looks.delete(e.pointerId); if (l && performance.now() - l.t < 300 && Math.hypot(e.clientX - l.sx, e.clientY - l.sy) < 12) tapAt(e.clientX, e.clientY); };
+  cvs.addEventListener('pointerup', lookEnd); cvs.addEventListener('pointercancel', e => looks.delete(e.pointerId));
+}
+// PC: you can also click keys / battle buttons when the mouse isn't locked
+renderer.domElement.addEventListener('click', e => { if (DEVICE === 'pc' && document.pointerLockElement !== renderer.domElement && !renderer.xr.isPresenting) tapAt(e.clientX, e.clientY); });
+
+window.__boss = { makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -2689,6 +2932,7 @@ document.getElementById('vrGo').addEventListener('click', () => { ensureAudio();
 if (navigator.xr) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => {
     if (!ok) return;                                   // a PC: keep the desktop preview and its instructions
+    DEVICE = 'vr'; DEVICE_NAME = 'VR HEADSET';
     document.getElementById('hud').style.display = 'none';
     document.querySelector('#VRButton')?.style.setProperty('display', 'none');
     vrStart.hidden = false;
@@ -2740,7 +2984,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } if (BT.active) btHands(dt); else updateXR(dt); }
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
