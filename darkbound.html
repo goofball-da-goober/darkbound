@@ -1493,9 +1493,9 @@ const B_ATTACKS = {
   grid: { name: 'Checkmate Grid', duration: 9, emitters: [bEm('laser', { orient: 'both', aim: 'player', start: 0.5, end: 9, every: 1.8, warn: 0.9, width: 18, color: '#9b5cff' }), bEm('rain', { start: 1, end: 9, every: 0.35, count: 2, speed: 90, drift: 10, color: '#ff5c8a', shape: 'orb', size: 5 })] },
 };
 const BOSSES = [
-  { id: 'warden', name: 'GLOOM WARDEN', color: 0x9b5cff, style: 'warden', hp: 900, intro: 'The Warden guards the edge of the Rift.', attacks: ['halo', 'gate', 'prism'] },
-  { id: 'witch', name: 'THE PRISM WITCH', color: 0x5ef2ff, style: 'witch', hp: 750, intro: 'She splits light into blades.', attacks: ['twin', 'sniper', 'starfall'] },
-  { id: 'colossus', name: 'RUST COLOSSUS', color: 0xff8a3d, style: 'colossus', hp: 1400, intro: 'A machine that forgot how to stop.', attacks: ['pinball', 'moths', 'grid'] },
+  { id: 'warden', name: 'GLOOM WARDEN', color: 0x9b5cff, style: 'warden', hp: 900, story: true, intro: 'The Warden guards the edge of the Rift.', attacks: ['halo', 'gate', 'prism'] },
+  { id: 'witch', name: 'THE PRISM WITCH', color: 0x5ef2ff, style: 'witch', hp: 750, story: true, intro: 'She splits light into blades.', attacks: ['twin', 'sniper', 'starfall'] },
+  { id: 'colossus', name: 'RUST COLOSSUS', color: 0xff8a3d, style: 'colossus', hp: 1400, story: true, intro: 'A machine that forgot how to stop.', attacks: ['pinball', 'moths', 'grid'] },
   // fan-made bosses (not in story mode): beat them for XP + levels
   { id: 'disco', name: 'DISCO DOOM', color: 0xff5cf0, style: 'disco', hp: 1000, fan: true, intro: 'FAN BOSS! He only dances in the dark.', attacks: ['twin', 'starfall', 'halo'] },
   { id: 'moth', name: 'MOTHER MOTH', color: 0xe6d0ff, style: 'moth', hp: 1100, fan: true, intro: 'FAN BOSS! Her babies are the bullets.', attacks: ['moths', 'sniper', 'starfall'] },
@@ -1814,7 +1814,7 @@ function startBoss(i, st) {
   const def = BOSSES[i]; setArenaFor(def); B.def = def; B.i = i;
   B.model = makeBossModel(def); B.model.root.scale.setScalar(0.01); scene.add(B.model.root);
   B.pos.copy(HOME); B.pos.y = FY - 1; B.model.root.position.copy(B.pos);
-  B.maxHp = Math.round(def.hp * (1 + 0.5 * remotes.size)); B.hp = B.maxHp;
+  B.maxHp = Math.round(def.hp * (def.story ? 2.2 : 1) * (1 + 0.5 * remotes.size)); B.hp = B.maxHp; B.enraged = false;
   B.idx = 0; B.phase = 'intro'; B.pt = 0; B.T = 0; B.bullets = []; B.dizzyTold = false;
   P.hp = P.max; P.inv = 0;
   if (st) syncBoss(st, true);
@@ -1832,6 +1832,7 @@ function syncBoss(d, fresh) {
   if (B.idx !== d.i || B.phase !== d.ph) { B.idx = d.i; setPhase(d.ph, d.pt); }
   else if (Math.abs(B.pt - d.pt) > 0.6) { B.pt = d.pt; if (B.phase === 'atk') prepAttack(B.pt); }
 }
+const bossMul = () => !B.def?.story ? 1 : B.enraged ? 1.45 : 1.22;
 function prepAttack(t0 = 0) {
   B.atk = B_ATTACKS[B.def.attacks[B.idx % B.def.attacks.length]];
   B.ems = B.atk.emitters.map(e => { const c = { ...e, _next: e.start, _k: 0, _ang: 0, _alt: false }; while (c._next < t0) c._next += c.every; return c; });
@@ -1842,10 +1843,12 @@ function setPhase(ph, t0 = 0) {
   if (ph === 'stag') { clearLasers(); sfx(140, 40, 0.5, 'square', 0.3); if (!B.dizzyTold) { B.dizzyTold = true; banner('IT\'S DIZZY!', renderer.xr.isPresenting ? 'SLAP IT WITH YOUR HANDS' : 'GET CLOSE AND PRESS E', 2.2, '#ffd447'); } }
 }
 function damageBoss(n, local) {
+  if (n <= 0 && B.def?.story && B.phase !== 'dead' && B.phase !== 'stag' && performance.now() - (B.shieldT || 0) > 900) { B.shieldT = performance.now(); sfx(1200, 900, 0.08, 'square', 0.12); toast('ITS SHIELD IS UP: DODGE UNTIL IT GETS DIZZY'); return; }
   if (!B.def || B.phase === 'dead' || B.phase === 'intro' || n <= 0) return;
   B.flash = 1; sfx(220, 60, 0.18, 'square', 0.3); sfx(90, 40, 0.2, 'sawtooth', 0.2);
   if (local && !bossAuth()) { bsend({ t: 'bdmg', n }); B.hp = Math.max(1, B.hp - n); return; } // the host has the final say
   B.hp -= n;
+  if (B.def.story && !B.enraged && B.hp > 0 && B.hp < B.maxHp / 2) { B.enraged = true; banner(B.def.name + ' IS FURIOUS!', 'FASTER BULLETS. SHORTER DIZZY. GOOD LUCK', 2.6, '#ff3b6b'); sfx(60, 30, 1, 'sawtooth', 0.4); }
   if (B.hp <= 0) { B.hp = 0; bsend({ t: 'bend', win: true }); endBoss(true); }
 }
 function endBoss(win) {
@@ -1900,7 +1903,7 @@ function shoot(e, o, vx, vy, vz, extra) {
 const shootA = (e, o, ang, sp, extra) => shoot(e, o, Math.cos(ang) * sp, 0, Math.sin(ang) * sp, extra);
 function bfire(e) {
   e._k++;
-  const o = borigin(e.origin, _bo), tg = chest(_bt), toP = Math.atan2(tg.z - o.z, tg.x - o.x), sp = e.speed * SPD;
+  const o = borigin(e.origin, _bo), tg = chest(_bt), toP = Math.atan2(tg.z - o.z, tg.x - o.x), sp = e.speed * SPD * bossMul();
   if (B.volleyT <= 0) { sfx(520, 260, 0.06, 'triangle', 0.05); B.volleyT = 0.12; }
   switch (e.type) {
     case 'ring': { const n = Math.max(1, e.count | 0), base = e._k * e.spin * D2R; for (let i = 0; i < n; i++) shootA(e, o, base + i * Math.PI * 2 / n, sp); break; }
@@ -1956,12 +1959,13 @@ function bfire(e) {
 }
 function hurtMe(fromP) {
   if (P.inv > 0 || B.phase === 'dead') return;
-  P.inv = 1; P.hp -= 3; P.flash = 0.4;
+  P.inv = 1; P.hp -= B.def?.story ? 5 : 3; P.flash = 0.4;
   sfx(420, 90, 0.25, 'sawtooth', 0.28);
   for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 140);
   _bw.copy(myPose.h).sub(fromP); _bw.y = 0; if (_bw.lengthSq() > 1e-6) vel.addScaledVector(_bw.normalize(), 2.5); vel.y += 1.5; // knocked back
   if (P.hp <= 0) { // downed: back to the west gate with full health
     P.hp = P.max; P.inv = 2.5;
+    if (B.def?.story && bossAuth()) { B.hp = Math.min(B.maxHp, B.hp + Math.round(B.maxHp * 0.12)); toast('THE BOSS HEALED A LITTLE WHILE YOU WERE DOWN'); }
     rig.position.set(AX - 14, 0.1, AZ); rig.quaternion.identity(); vel.set(0, 0, 0); hist.length = 0; for (const h of hands) h.fresh = true;
     if (!renderer.xr.isPresenting) yaw = -Math.PI / 2;
     banner('YOU WERE DOWNED', 'GET BACK IN THERE!', 2.5, '#ff3b6b');
@@ -2040,7 +2044,7 @@ function updateFx(dt) {
 const _bossGoal = new THREE.Vector3(), _ploc = new THREE.Vector3(), _prevHand = [new THREE.Vector3(), new THREE.Vector3()];
 const nearArena = p => Math.abs(p.x - AX) < 25 && Math.abs(p.z - AZ) < 25;
 function bossAction() { // desktop: E / F / click
-  if (B.def && B.phase !== 'dead' && myPose.h.distanceTo(B.pos) < rHit() + 1.2) { damageBoss(B.phase === 'stag' ? 35 : 15, true); return; }
+  if (B.def && B.phase !== 'dead' && myPose.h.distanceTo(B.pos) < rHit() + 1.2) { damageBoss(B.phase === 'stag' ? (B.def.story ? 26 : 35) : (B.def.story ? 0 : 15), true); return; }
   let best = -1, bd = 1.7;
   peds.forEach((p, i) => { const d = Math.hypot(myPose.h.x - PED[i].x, myPose.h.z - PED[i].z); if (d < bd) { bd = d; best = i; } });
   if (best >= 0) trySummon(best);
@@ -2057,7 +2061,7 @@ function updateBoss(dt, t) {
     const speed = h.last.distanceTo(_prevHand[hi]) / Math.max(dt, 1e-3); _prevHand[hi].copy(h.last);
     if (B.def && B.phase !== 'dead' && h.last.distanceTo(B.pos) < rHit() + 0.1 && speed > 1.0 && performance.now() - (h.bossCd || 0) > 250) {
       h.bossCd = performance.now();
-      damageBoss(Math.round(Math.min(70, 15 + speed * 12) * (B.phase === 'stag' ? 1 : 0.5)), true);
+      damageBoss(Math.round(Math.min(B.def.story ? 42 : 70, 15 + speed * 12) * (B.phase === 'stag' ? 1 : B.def.story ? 0 : 0.5)), true);
       h.source.gamepad?.hapticActuators?.[0]?.pulse?.(1, 80); onTouch(h, 3);
     }
   });
@@ -2069,10 +2073,10 @@ function updateBoss(dt, t) {
       const dur = B.atk.duration || 6;
       if (B.pt <= dur && nearArena(myPose.h)) for (const e of B.ems) {
         if (e.every <= 0.01) continue; let g = 0;
-        while (B.pt >= e._next && e._next <= Math.min(e.end, dur) && g++ < 50) { if (B.pt >= e.start) bfire(e); e._next += e.every; }
+        while (B.pt >= e._next && e._next <= Math.min(e.end, dur) && g++ < 50) { if (B.pt >= e.start) bfire(e); e._next += e.every / bossMul(); }
       }
       if (B.pt > dur + 1.2) setPhase('stag');
-    } else if (B.phase === 'stag' && B.pt > 5.5) { B.idx = (B.idx + 1) % len; setPhase('atk'); }
+    } else if (B.phase === 'stag' && B.pt > (B.def.story ? (B.enraged ? 3 : 3.6) : 5.5)) { B.idx = (B.idx + 1) % len; setPhase('atk'); }
     else if (B.phase === 'dead' && B.pt > 3.2) { burst(B.pos, B.def.color); sfx(80, 30, 1.2, 'sawtooth', 0.3); clearBoss(); }
     if (B.def) {
       // where the boss floats
@@ -3991,7 +3995,7 @@ const SB_CH = {
 SB_CH[3].fights = ['gloom']; SB_CH[4].fights = ['bat']; SB_CH[5].fights = ['crab'];
 SB_CH[3].guards = 'Wait! A Gloomlet guard is in the way. Battle it first!'; SB_CH[4].guards = 'A Spark Bat guard! Beat it, then the Witch!'; SB_CH[5].guards = 'A Bolt Crab guard. Clicky. Beat it first!';
 SB_CH[5].win = ['YOU BEAT ALL THREE! The arena is so quiet now.', 'Too quiet. Wait... do you hear that? Something BIG.', 'Uh oh. Get ready...'];
-const KING = { id: 'king', name: 'THE HOLLOW KING', color: 0x7a2cff, style: 'king', hp: 2600, scale: 1.7, intro: 'The ruler of the dark. He wants to wake the Eye.', attacks: ['halo', 'twin', 'gate', 'prism', 'moths', 'grid', 'starfall'] };
+const KING = { id: 'king', name: 'THE HOLLOW KING', color: 0x7a2cff, style: 'king', hp: 2600, story: true, scale: 1.7, intro: 'The ruler of the dark. He wants to wake the Eye.', attacks: ['halo', 'twin', 'gate', 'prism', 'moths', 'grid', 'starfall'] };
 BOSSES.push(KING); // (after the arena statues were made, so it has no statue: story only)
 SB_CH[6] = { boss: BOSSES.indexOf(KING), title: 'THE HOLLOW KING', fights: ['gloom', 'bat', 'crab'],
   intro: ['Uh oh. Uh oh uh oh. Something HUGE is coming.', 'Everyone whispers about the Hollow King. He wants to wake up the Eye!', 'First his three guards. Then... him. I\'ll be right behind you. WAY behind you.'],
