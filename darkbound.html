@@ -42,6 +42,7 @@
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
   • <b>Battles (new!):</b> touch a roaming monster. Touch / 1-4: pick, swing / Space: slap, hand / WASD: dodge<br>
   • <b>Hat Stand:</b> by spawn, buy hats with bananas<br>
+  • <b>Game modes:</b> red GAME MODES portal west of spawn → the Darkwood: HORROR (a monster hunts you) and BTM (a player is the monster)<br>
   • <b>COMPUTAH:</b> east of spawn. Walk up, press <b>T</b> to type: name, room codes, color, turning, mic, volume, save codes<br>
   • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
@@ -287,6 +288,27 @@ HAT_PEDS.forEach(p => addBox(p.x, 0, p.z, 0.7, 0.9, 0.7, COL.gold, EDGE.gold));
 // --- COMPUTAH desk (east of spawn) ---
 addBox(8.6, 0, 8, 0.7, 0.4, 1.5, COL.stoneHi, EDGE.cyan);
 
+// --- GAME MODES: the Darkwood (a dark horror maze, far south) ---
+const MX = 0, MZ = 175, DWW = 0x150b1c, DWE = 0x3d1d52, DWT = 0x1a0d12;
+addBox(MX, -0.5, MZ, 66, 0.5, 66, 0x0d0812, DWE);                                                // ground
+for (const [x, z, sx, sz] of [[0, -33, 66, 1], [0, 33, 66, 1], [-33, 0, 1, 66], [33, 0, 1, 66]]) addBox(MX + x, 0, MZ + z, sx, 6, sz, DWW, DWE); // border
+{ // the maze: 7 m cells, walls you can climb, a clearing in the middle
+  const N = 8, C = 7, X0 = MX - 28, Z0 = MZ - 28;
+  for (let i = 1; i < N; i++) for (let j = 0; j < N; j++) { const x = X0 + i * C, z = Z0 + j * C + C / 2; if (Math.hypot(x - MX, z - MZ) < 8 || z > MZ + 20) continue; if (rnd() < 0.42) addBox(x, 0, z, 0.4, 3.2, C, DWW, DWE); }
+  for (let j = 1; j < N; j++) for (let i = 0; i < N; i++) { const x = X0 + i * C + C / 2, z = Z0 + j * C; if (Math.hypot(x - MX, z - MZ) < 8 || z > MZ + 20) continue; if (rnd() < 0.42) addBox(x, 0, z, C, 3.2, 0.4, DWW, DWE); }
+}
+for (let k = 0; k < 16; k++) { // dead trees
+  const x = MX + rr(-29, 29), z = MZ + rr(-29, 17); if (Math.hypot(x - MX, z - MZ) < 6) continue; const h = rr(3, 6);
+  addBox(x, 0, z, 0.5, h, 0.5, DWT, 0x3a1420); addBox(x + 0.6, h * 0.6, z, 1.2, 0.25, 0.25, DWT, 0x3a1420); addBox(x, h * 0.8, z - 0.5, 0.25, 0.25, 1.0, DWT, 0x3a1420);
+}
+// Mode Room: the safe room on the south side (door faces the woods)
+addBox(MX - 6, 0, MZ + 27, 0.4, 3, 9, DWW, 0x9b5cff); addBox(MX + 6, 0, MZ + 27, 0.4, 3, 9, DWW, 0x9b5cff);
+addBox(MX - 4, 0, MZ + 22.5, 4, 3, 0.4, DWW, 0x9b5cff); addBox(MX + 4, 0, MZ + 22.5, 4, 3, 0.4, DWW, 0x9b5cff);
+addBox(MX - 3, 0, MZ + 27.5, 1, 0.9, 1, COL.gold, EDGE.pink);                                    // HORROR pedestal
+addBox(MX + 3, 0, MZ + 27.5, 1, 0.9, 1, COL.gold, EDGE.cyan);                                    // BTM pedestal
+// Escape Gate (north edge)
+addBox(MX - 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX + 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX, 4.5, MZ - 31.6, 6, 0.6, 0.8, DWW, 0xff5c8a);
+
 buildMeshes();
 
 // --- the Rift: a pillar of light with rising sparks ---
@@ -487,7 +509,7 @@ function updateXR(dt) {
   } else {
     if (wasAny) { // just let go: fling with the speed the body had
       histVel(_v);
-      if (_v.length() > MIN_RELEASE) { vel.copy(_v).multiplyScalar(JUMP_MULT); if (vel.length() > MAX_JUMP) vel.setLength(MAX_JUMP); }
+      if (_v.length() > MIN_RELEASE) { vel.copy(_v).multiplyScalar(JUMP_MULT * moveBoost); if (vel.length() > MAX_JUMP * moveBoost) vel.setLength(MAX_JUMP * moveBoost); }
     }
     vel.y -= G * dt;
     rig.position.addScaledVector(vel, dt);
@@ -538,7 +560,7 @@ addEventListener('mousemove', e => {
 function updateDesktop(dt) {
   camera.rotation.set(pitch, yaw, 0, 'YXZ');
   const f = Math.max(-1, Math.min(1, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - TOUCH.y)), s = Math.max(-1, Math.min(1, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + TOUCH.x));
-  const sp = keys.ShiftLeft || keys.ShiftRight ? 11 : 6;
+  const sp = (keys.ShiftLeft || keys.ShiftRight ? 11 : 6) * moveBoost;
   const tx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, tz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
   const k = 1 - Math.exp(-(grounded ? 14 : 3) * dt);
   vel.x += (tx - vel.x) * k; vel.z += (tz - vel.z) * k;
@@ -667,7 +689,7 @@ function makeGorilla(color) {
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
-  let selfHidden = false, hatObj = null, tag = null, tagName = '';
+  let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null;
 
   return {
     root, head, body,
@@ -680,6 +702,13 @@ function makeGorilla(color) {
       const cx = tag.userData.cv.getContext('2d'); cx.clearRect(0, 0, 256, 64);
       if (tagName) { cx.fillStyle = 'rgba(10,5,25,0.75)'; cx.fillRect(0, 8, 256, 48); cx.fillStyle = '#fff'; cx.font = 'bold 34px monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(tagName, 128, 33); }
       tag.material.map.needsUpdate = true; tag.visible = !!tagName && !selfHidden;
+    },
+    setMonster(on, normal) {
+      if (on === isMon) return; isMon = on;
+      if (!monObj) { monObj = new THREE.Group(); const hornM = toon(0x5a0a1a, 0.3), eyeM = new THREE.MeshBasicMaterial({ color: 0xff1a2a });
+        for (const s of [-1, 1]) { part(monObj, new THREE.ConeGeometry(0.035, 0.14, 8), hornM, [s * 0.08, 0.17, 0], null, 0.005).rotation.z = -s * 0.5; part(monObj, S(0.021, 8, 6), eyeM, [s * 0.046, 0.012, -0.2], null, 0); }
+        skull.add(monObj); }
+      monObj.visible = on; if (on) this.setColor(0x2a0a14); else if (normal !== undefined) this.setColor(normal);
     },
     setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
@@ -989,6 +1018,7 @@ function onData(d, from) {
   if (d.t === 's' && Array.isArray(d.h)) { if (from && !from.gameId) from.gameId = d.id; applyState(d); }
   else if (d.t === 'bye') removeRemote(d.id);
   else if (BOSS_MSG.has(d.t)) bossNet(d);
+  else if (GM_MSG.has(d.t)) gmNet(d);
   if (net.isHost) broadcast(d, from); // host relays to everyone else
 }
 function resetNet(delay) {
@@ -2403,7 +2433,7 @@ addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; l
   c.fillStyle = '#6dff9a'; c.font = 'bold 76px monospace'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
   c.fillStyle = '#ffd447'; c.font = 'bold 44px monospace'; c.fillText('ALPHA 0.2', 512, 165);
   c.textAlign = 'left'; c.font = 'bold 36px monospace';
-  ['⚔ DARK BATTLES: touch a roaming', '  monster to fight it, turn by turn', '  SLAP • TALK • SNACK • CHILL', '  then dodge in the battle box!', '', '🦀 NEW: Bolt Crab', '🍌 BANANAS: win battles, bosses', '  and story chapters', '🎩 HAT STAND: buy hats, everyone', '  sees them', '📖 STORY: chapters 1, 2 and 2.5', '  (jump in the Rift!)']
+  ['⚔ DARK BATTLES: touch a roaming', '  monster to fight it, turn by turn', '  SLAP • TALK • SNACK • CHILL', '  then dodge in the battle box!', '', '🦀 NEW: Bolt Crab', '🍌 BANANAS: win battles, bosses', '  and story chapters', '🎩 HAT STAND: buy hats, everyone', '  sees them', '🌲 DARKWOOD portal (west): HORROR', '  + BTM monster modes!']
     .forEach((l, i) => { c.fillStyle = l.startsWith(' ') ? '#cbbcf0' : '#ffffff'; c.fillText(l, 60, 250 + i * 62); });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(5.6, 1.6, 10.8); m.rotation.y = Math.PI; scene.add(m);
@@ -2909,7 +2939,294 @@ if (DEVICE === 'mobile') {
 // PC: you can also click keys / battle buttons when the mouse isn't locked
 renderer.domElement.addEventListener('click', e => { if (DEVICE === 'pc' && document.pointerLockElement !== renderer.domElement && !renderer.xr.isPresenting) tapAt(e.clientX, e.clientY); });
 
-window.__boss = { makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= GAME MODES: HORROR (a monster hunts you) + BTM (a player is the monster) =================
+const inDW = p => Math.abs(p.x - MX) < 34 && Math.abs(p.z - MZ) < 34;
+const MR_SPOT = new THREE.Vector3(MX, 0.1, MZ + 29.5);                    // where you stand in the Mode Room
+const CELL = (i, j) => new THREE.Vector3(MX - 24.5 + 7 * i, 0, MZ - 24.5 + 7 * j);
+const OPEN_CELLS = []; for (let i = 0; i < 8; i++) for (let j = 0; j < 7; j++) OPEN_CELLS.push(CELL(i, j));
+const KEY_CELLS = [[1, 5], [6, 5], [0, 2], [7, 0], [4, 0], [2, 1]].map(([i, j]) => CELL(i, j));
+const GATE = new THREE.Vector3(MX, 0, MZ - 31);
+const GM_MSG = new Set(['gm', 'gmreq', 'gmkey', 'gmcaught', 'gmesc', 'gmtag']);
+const GMODE = { horror: { name: 'HORROR', dur: 300 }, btm: { name: 'BTM', dur: 180 } };
+// round state (the host runs it; everyone else copies it)
+const GM = { mode: '', phase: 'idle', t: 0, dur: 0, parts: [], caught: [], escaped: [], monster: '', keys: 0, ai: { x: MX, z: MZ - 10, yaw: 0, st: 'wander' }, result: '', sendT: 0, endT: 0 };
+const gmLocal = { phase: 'idle', caughtMe: false, escapedMe: false, beatT: 0, scareT: 0, aiTarget: new THREE.Vector3(), aiChase: '', aiLost: 0, aiPos: new THREE.Vector3(MX, 0, MZ - 10), keyCd: 0, tagCd: 0, inDW: false, hintT: 0 };
+let moveBoost = 1; // the BTM monster moves faster
+// ---- darkness: thick fog, dim lights, your own lantern glow ----
+const hemi = scene.children.find(o => o.isHemisphereLight);
+const lightFog = scene.fog, darkFog = new THREE.FogExp2(0x030106, 0.07), lightBg = scene.background.clone(), darkBg = new THREE.Color(0x020103);
+const myLantern = new THREE.PointLight(0xffd9a0, 0, 10, 1.6); scene.add(myLantern);
+let skyStuff = null;
+function setDark(on) {
+  scene.fog = on ? darkFog : lightFog; scene.background = on ? darkBg : lightBg;
+  if (hemi) hemi.intensity = on ? 0.3 : 1.2; sun.intensity = on ? 0.12 : 1.0; riftLight.visible = !on;
+  myLantern.intensity = on ? 2.8 : 0;
+  skyStuff ||= scene.children.filter(o => o.isPoints || o === beam || o === core || o === floaters || o === beacon || o === skyEye.root);
+  for (const o of skyStuff) o.visible = !on; // no stars, Rift beam or sky Eye in the dark woods
+}
+// ---- the place ----
+const dwPortal = storyPortal(-9.6, 1.4, 6.5, 'GAME MODES', 'HORROR • BTM', 0xff3b6b); dwPortal.rotation.y = Math.PI / 2;
+const homeDW = storyPortal(MX - 4.3, 1.4, MZ + 30.5, 'HOME', 'BACK TO THE LOBBY', 0x5ef2ff);
+const gmPeds = [['horror', MX - 3, 'HORROR', 'A MONSTER HUNTS YOU', '#ff3b6b'], ['btm', MX + 3, 'BTM', 'A PLAYER IS THE MONSTER', '#5ef2ff']].map(([mode, x, title, sub, col]) => {
+  const lab = labelTex(null, 512, 160); const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.5), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, fog: false }));
+  sign.position.set(x, 2.1, MZ + 27.5); scene.add(sign); // faces you as you walk in
+  const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: new THREE.Color(col), fog: false })); orb.position.set(x, 1.25, MZ + 27.5); scene.add(orb);
+  return { mode, lab, orb, title, sub, col, state: '', cd: 0 };
+});
+function drawGmPeds() { for (const p of gmPeds) { const s = GM.phase === 'idle' ? 'ready' : 'busy'; if (s === p.state) continue; p.state = s; p.lab.draw([p.title, s === 'ready' ? 'TOUCH TO START • ' + p.sub : 'ROUND IN PROGRESS...', p.col]); } }
+{ const lab = labelTex(null, 1024, 256); lab.draw(['THE DARKWOOD', 'PICK A MODE • STAY IN THE LIGHT', '#ff3b6b']); const m = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, fog: false })); m.position.set(MX, 2.6, MZ + 31.3); m.rotation.y = Math.PI; scene.add(m); }
+for (const [x, z] of [[-5.5, 23], [5.5, 23], [-5.5, 31], [5.5, 31]]) { const l = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, fog: false })); l.position.set(MX + x, 2.4, MZ + z); scene.add(l); } // room lamps
+// glowing keys
+const dwKeys = KEY_CELLS.map(p => { const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), new THREE.MeshBasicMaterial({ color: 0x6dff9a, fog: false })); m.scale.y = 1.6; m.position.copy(p).setY(1.0); m.visible = false; scene.add(m); return m; });
+const gateGlow = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), new THREE.MeshBasicMaterial({ color: 0x6dff9a, transparent: true, opacity: 0, side: THREE.DoubleSide, fog: false, depthWrite: false })); gateGlow.position.set(MX, 2.25, MZ - 31.6); scene.add(gateGlow);
+// ---- THE LONGARM (the horror monster) ----
+function makeLongarm() {
+  const root = new THREE.Group(), skin = toon(0x0b0508, 0.05), red = new THREE.MeshBasicMaterial({ color: 0xff1a2a, fog: false });
+  part(root, new THREE.CylinderGeometry(0.22, 0.3, 1.3, 10), skin, [0, 1.6, 0], null, 0.02);                   // thin body
+  part(root, S(0.3, 16, 12), skin, [0, 2.45, 0.05], [0.9, 1.3, 0.9], 0.02);                                     // long head
+  for (const s of [-1, 1]) {
+    part(root, S(0.055, 10, 8), red, [s * 0.11, 2.55, 0.3], [1, 0.6, 0.6], 0);                                  // red eyes
+    part(root, new THREE.CylinderGeometry(0.045, 0.035, 1.6, 8), skin, [s * 0.36, 1.25, 0.05], null, 0.012).rotation.z = s * 0.12; // long arms
+    for (let k = 0; k < 3; k++) part(root, new THREE.ConeGeometry(0.02, 0.22, 6), skin, [s * 0.44 + (k - 1) * 0.03, 0.38, 0.08], null, 0.005).rotation.x = Math.PI; // claws
+    part(root, new THREE.CylinderGeometry(0.06, 0.04, 1.0, 8), skin, [s * 0.12, 0.5, 0], null, 0.012);         // legs
+  }
+  for (let k = 0; k < 7; k++) part(root, new THREE.ConeGeometry(0.018, 0.07, 4), new THREE.MeshBasicMaterial({ color: 0xe8e0d0, fog: false }), [-0.12 + k * 0.04, 2.3, 0.3], null, 0).rotation.x = k % 2 ? Math.PI : 0; // jagged grin
+  root.visible = false; scene.add(root); return root;
+}
+const longarm = makeLongarm();
+// jump scare: its face right in front of you for a moment
+const scare = new THREE.Group(); scare.position.set(0, -0.02, -0.3); scare.visible = false; camera.add(scare); camHide.push(scare);
+{ const sk = new THREE.MeshBasicMaterial({ color: 0x0b0508, depthTest: false }), rd = new THREE.MeshBasicMaterial({ color: 0xff1a2a, depthTest: false }), th = new THREE.MeshBasicMaterial({ color: 0xe8e0d0, depthTest: false });
+  const f = new THREE.Mesh(S(0.16, 16, 12), sk); f.scale.set(1, 1.3, 0.5); scare.add(f);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(S(0.03, 10, 8), rd); e.position.set(s * 0.06, 0.05, 0.08); scare.add(e); }
+  for (let k = 0; k < 9; k++) { const t = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.045, 4), th); t.position.set(-0.08 + k * 0.02, -0.08, 0.08); if (k % 2) t.rotation.x = Math.PI; scare.add(t); }
+  scare.traverse(o => { o.renderOrder = 1000; }); }
+// ---- HUD ----
+const gmPanel = camPanel(0.32, 0.05, 640, 100, [0, 0.2, -0.7]);
+const gmHudEl = document.createElement('div'); gmHudEl.style.cssText = 'position:fixed;left:50%;top:60px;transform:translateX(-50%);z-index:5;font:bold 18px ui-monospace,Consolas,monospace;color:#fff;background:rgba(10,3,8,.8);border:2px solid #ff3b6b;border-radius:8px;padding:4px 12px;pointer-events:none;display:none'; document.body.appendChild(gmHudEl);
+let gmHudText = '';
+function gmStatusText() {
+  if (GM.phase === 'idle') return '';
+  const left = Math.max(0, Math.ceil(GM.dur - GM.t)), mm = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+  const me = GM.parts.includes(myId), role = !me ? 'WATCHING' : GM.caught.includes(myId) ? 'CAUGHT' : GM.escaped.includes(myId) ? 'ESCAPED' : GM.mode === 'btm' && GM.monster === myId ? 'YOU ARE THE MONSTER' : 'SURVIVOR';
+  if (GM.phase === 'count') return GMODE[GM.mode].name + ' STARTS IN ' + Math.max(1, Math.ceil(5 - GM.t));
+  if (GM.phase === 'end') return GM.result;
+  const alive = GM.parts.filter(id => !GM.caught.includes(id) && !GM.escaped.includes(id) && id !== GM.monster).length;
+  return GMODE[GM.mode].name + ' ' + mm + '  •  ' + (GM.mode === 'horror' ? 'KEYS ' + bitCount(GM.keys) + '/5' + (GM.keys && bitCount(GM.keys) >= 5 ? ' GATE OPEN!' : '') : 'SURVIVORS ' + alive) + '  •  ' + role;
+}
+const bitCount = n => { let c = 0; while (n) { c += n & 1; n >>= 1; } return c; };
+function drawGmHud() {
+  const txt = gmStatusText(); if (txt === gmHudText) return; gmHudText = txt;
+  gmHudEl.textContent = txt; gmHudEl.style.display = txt && !renderer.xr.isPresenting ? '' : 'none';
+  const c = gmPanel.cv.getContext('2d'); c.clearRect(0, 0, 640, 100);
+  if (txt) { c.fillStyle = 'rgba(10,3,8,0.8)'; c.fillRect(0, 0, 640, 100); c.strokeStyle = '#ff3b6b'; c.lineWidth = 5; c.strokeRect(3, 3, 634, 94); c.fillStyle = '#fff'; c.font = 'bold 30px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 320, 52, 610); }
+  gmPanel.tex.needsUpdate = true;
+}
+// ---- the host runs the round ----
+const gmAuth = () => bossAuth();
+function gmSend() { bsend({ t: 'gm', mode: GM.mode, phase: GM.phase, tt: +GM.t.toFixed(1), dur: GM.dur, parts: GM.parts, caught: GM.caught, escaped: GM.escaped, monster: GM.monster, keys: GM.keys, ai: [+GM.ai.x.toFixed(2), +GM.ai.z.toFixed(2), +GM.ai.yaw.toFixed(2)], result: GM.result }); }
+function gmPlayersInDW() { const ids = []; if (inDW(myPose.h)) ids.push(myId); for (const [id, r] of remotes) if (inDW(r.c.h)) ids.push(id); return ids; }
+function gmStart(mode) {
+  if (GM.phase !== 'idle') return;
+  const parts = gmPlayersInDW();
+  let withBots = false;
+  if (mode === 'btm' && parts.length < 2) { if (remotes.size) { banner('BTM NEEDS 2+ PLAYERS IN HERE', 'GET YOUR FRIENDS INTO THE DARKWOOD', 2.5, '#ff3b6b'); return; } withBots = true; for (const b of BOTS.slice(0, 4)) parts.push(b.id); banner('THE AI GORILLAS WILL PLAY', 'YOU ARE THE MONSTER!', 2.5, '#ff3b6b'); }
+  Object.assign(GM, { mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '' });
+  GM.ai = { x: MX, z: MZ - 14, yaw: 0, st: 'wander' }; gmLocal.aiPos.set(MX, 0, MZ - 14);
+  gmSend(); gmApply(true);
+}
+function gmFinish(result) { GM.phase = 'end'; GM.t = 0; GM.result = result; gmSend(); gmApply(true); }
+function gmNet(d) {
+  if (d.t === 'gm') { if (!gmAuth()) { Object.assign(GM, { mode: d.mode, phase: d.phase, dur: d.dur, parts: d.parts || [], caught: d.caught || [], escaped: d.escaped || [], monster: d.monster || '', keys: d.keys || 0, result: d.result || '' }); GM.t = d.tt; if (d.ai) { GM.ai.x = d.ai[0]; GM.ai.z = d.ai[1]; GM.ai.yaw = d.ai[2]; } gmApply(false); } return; }
+  if (!gmAuth()) return;
+  if (d.t === 'gmreq' && GMODE[d.mode]) gmStart(d.mode);
+  if (d.t === 'gmkey' && GM.phase === 'play' && d.i >= 0 && d.i < 6) { GM.keys |= 1 << d.i; gmSend(); gmApply(false); }
+  if (d.t === 'gmcaught' && GM.phase === 'play' && GM.parts.includes(d.id) && !GM.caught.includes(d.id)) { GM.caught.push(d.id); gmSend(); gmApply(false); }
+  if (d.t === 'gmesc' && GM.phase === 'play' && GM.parts.includes(d.id) && !GM.escaped.includes(d.id)) { GM.escaped.push(d.id); gmSend(); gmApply(false); }
+  if (d.t === 'gmtag' && GM.phase === 'play' && GM.mode === 'btm' && GM.parts.includes(d.id) && d.id !== GM.monster && !GM.caught.includes(d.id)) { GM.caught.push(d.id); gmSend(); gmApply(false); }
+}
+function gmReport(t, extra) { const m = { t, id: myId, ...extra }; if (gmAuth()) gmNet(m); else bsend(m); }
+// what changes for YOU when the round changes
+function gmApply() {
+  const me = GM.parts.includes(myId);
+  if (GM.phase !== gmLocal.phase) {
+    const was = gmLocal.phase; gmLocal.phase = GM.phase;
+    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE MONSTER!' : 'RUN AND HIDE!') : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
+    if (GM.phase === 'play' && me) {
+      const sp = OPEN_CELLS[(GM.parts.indexOf(myId) * 7 + 3) % OPEN_CELLS.length];
+      if (GM.mode === 'btm' && GM.monster === myId) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); banner('COUNTING TO 12...', 'THEN HUNT THEM DOWN', 3, '#ff3b6b'); }
+      else teleport(sp.x, 0.2, sp.z);
+    }
+    if (GM.phase === 'end') {
+      banner(GM.result, '', 4, '#ff3b6b');
+      if (me) { const won = GM.mode === 'horror' ? GM.escaped.includes(myId) : (GM.monster === myId ? GM.result.includes('MONSTER WINS') : !GM.caught.includes(myId));
+        if (won) addBananas(GM.mode === 'horror' ? 15 : GM.monster === myId ? 12 : 10, GM.mode === 'horror' ? 'YOU ESCAPED!' : 'YOU WON THE ROUND!');
+        setTimeout(() => { if (inDW(myPose.h)) teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }, 2500); }
+    }
+    if (GM.phase === 'idle' && was === 'end') { moveBoost = 1; me_monster(false); }
+  }
+  // caught / escaped (yourself)
+  if (GM.caught.includes(myId) && !gmLocal.caughtMe) { gmLocal.caughtMe = true; if (GM.mode === 'horror') jumpScare(); else banner('THE MONSTER GOT YOU!', 'WATCH FROM THE MODE ROOM', 2.5, '#ff3b6b'); setTimeout(() => teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z), GM.mode === 'horror' ? 1200 : 300); }
+  if (GM.escaped.includes(myId) && !gmLocal.escapedMe) { gmLocal.escapedMe = true; banner('YOU ESCAPED!', 'WAIT FOR THE OTHERS IN THE MODE ROOM', 2.5, '#6dff9a'); teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }
+  // monster looks (BTM)
+  me_monster(GM.mode === 'btm' && GM.phase !== 'idle' && GM.phase !== 'end' && GM.monster === myId);
+  for (const [id, r] of remotes) r.g.setMonster(GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id, r.fur);
+  for (let i = 0; i < 6; i++) dwKeys[i].visible = GM.mode === 'horror' && GM.phase === 'play' && !(GM.keys & (1 << i));
+  drawGmPeds(); gmHudText = '~'; drawGmHud();
+}
+let meMonsterOn = false;
+function me_monster(on) { if (on === meMonsterOn) return; meMonsterOn = on; me.setMonster(on, MY_COLOR); moveBoost = on ? 1.35 : 1; }
+function jumpScare() {
+  gmLocal.scareT = 0.9; scare.visible = true;
+  sfx(180, 60, 0.9, 'sawtooth', 0.45); sfx(900, 200, 0.6, 'square', 0.25); sfx(60, 30, 1, 'sawtooth', 0.35);
+  for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 600);
+  banner('THE LONGARM GOT YOU!', 'WATCH FROM THE MODE ROOM', 2.5, '#ff3b6b');
+}
+// ---- per frame ----
+const _gw = new THREE.Vector3();
+function wallAt(x, z) { for (const b of solid) if (b.max.y - b.min.y > 1 && b.min.y < 1 && x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z) return true; return false; }
+function updateGM(dt, t) {
+  const h = myPose.h, here = inDW(h);
+  if (here !== gmLocal.inDW) { gmLocal.inDW = here; setDark(here); if (here) banner('THE DARKWOOD', 'STAY IN THE LIGHT...', 2.5, '#ff3b6b'); }
+  if (here) myLantern.position.copy(h).add(_gw.set(0, 0.3, 0));
+  // portals
+  dwPortal.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15; homeDW.rotation.y += dt * 0.6;
+  if (storyTouch(dwPortal.position, 1.0)) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z, Math.PI); sfx(300, 60, 0.8, 'sawtooth', 0.2); }
+  if (storyTouch(homeDW.position, 1.0) && !(GM.phase === 'play' && GM.parts.includes(myId) && !GM.caught.includes(myId) && !GM.escaped.includes(myId))) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('BACK IN THE LOBBY', '', 1.5, '#5ef2ff'); }
+  // mode pedestals
+  for (const p of gmPeds) { p.cd -= dt; p.orb.rotation.y += dt * 2; p.orb.position.y = 1.25 + Math.sin(t * 2) * 0.06;
+    if (GM.phase === 'idle' && p.cd <= 0 && storyTouch(p.orb.position, 0.6)) { p.cd = 3; if (gmAuth()) gmStart(p.mode); else { bsend({ t: 'gmreq', mode: p.mode }); banner('STARTING ' + p.title + '...', '', 1.5, '#ff3b6b'); } } }
+  drawGmPeds();
+  // the host moves the round along
+  if (GM.phase !== 'idle') GM.t += dt;
+  if (gmAuth() && GM.phase !== 'idle') {
+    if (GM.phase === 'count' && GM.t >= 5) { GM.phase = 'play'; GM.t = 0; gmSend(); gmApply(); }
+    else if (GM.phase === 'play') {
+      const alive = GM.parts.filter(id => !GM.caught.includes(id) && !GM.escaped.includes(id) && id !== GM.monster);
+      const stillHere = GM.parts.filter(id => id === myId ? inDW(h) : id.startsWith('bot') ? true : remotes.get(id) && inDW(remotes.get(id).c.h));
+      if (GM.mode === 'horror') {
+        if (!alive.length) gmFinish(GM.escaped.length ? 'ROUND OVER • ' + GM.escaped.length + ' ESCAPED!' : 'THE LONGARM WINS...');
+        else if (GM.t >= GM.dur) gmFinish('TIME UP • THE LONGARM WINS...');
+        hostLongarm(dt, alive);
+      } else {
+        if (!alive.length) gmFinish('THE MONSTER WINS!'); else if (GM.t >= GM.dur) gmFinish('SURVIVORS WIN!');
+        if (!stillHere.includes(GM.monster)) gmFinish('THE MONSTER LEFT • SURVIVORS WIN!');
+      }
+      if (!stillHere.length) gmFinish('EVERYONE LEFT');
+      if ((GM.sendT += dt) > 0.15) { GM.sendT = 0; gmSend(); }
+    } else if (GM.phase === 'end' && GM.t > 6) { GM.phase = 'idle'; GM.t = 0; gmSend(); gmApply(); }
+  }
+  // the Longarm (everyone draws it where the host says)
+  const horrorOn = GM.mode === 'horror' && GM.phase === 'play';
+  longarm.visible = horrorOn;
+  if (horrorOn) {
+    gmLocal.aiPos.lerp(_gw.set(GM.ai.x, 0, GM.ai.z), 1 - Math.exp(-8 * dt));
+    longarm.position.copy(gmLocal.aiPos); longarm.position.y = groundAt(gmLocal.aiPos.x, gmLocal.aiPos.z, 1) + Math.abs(Math.sin(t * 5)) * 0.05;
+    longarm.rotation.y = GM.ai.yaw; longarm.rotation.z = Math.sin(t * 2.5) * 0.05;
+    const meIn = GM.parts.includes(myId) && !GM.caught.includes(myId) && !GM.escaped.includes(myId);
+    const d = Math.hypot(h.x - gmLocal.aiPos.x, h.z - gmLocal.aiPos.z);
+    if (meIn && d < 0.95 && Math.abs(h.y - 1.5) < 2.5 && gmLocal.tagCd <= 0) { gmLocal.tagCd = 2; gmReport('gmcaught'); }
+    if (meIn && d < 16 && (gmLocal.beatT -= dt) <= 0) { gmLocal.beatT = 0.3 + d / 16 * 1.2; sfx(60, 40, 0.12, 'sine', 0.35 * (1 - d / 16) + 0.08); sfx(55, 35, 0.1, 'sine', 0.25 * (1 - d / 16) + 0.05, 0.14); }
+    // keys + gate
+    if (meIn) {
+      for (let i = 0; i < 6; i++) if (dwKeys[i].visible && gmLocal.keyCd <= 0 && storyTouch(dwKeys[i].position, 0.9)) { gmLocal.keyCd = 0.5; dwKeys[i].visible = false; gmReport('gmkey', { i }); addBananas(2, 'KEY FOUND'); sfx(880, 1760, 0.25, 'triangle', 0.15); }
+      if (bitCount(GM.keys) >= 5 && Math.hypot(h.x - GATE.x, h.z - GATE.z) < 2.5) gmReport('gmesc');
+    }
+    for (const k of dwKeys) if (k.visible) { k.rotation.y += dt * 2; k.position.y = 1.0 + Math.sin(t * 2 + k.position.x) * 0.1; }
+  }
+  gateGlow.material.opacity = horrorOn && bitCount(GM.keys) >= 5 ? 0.35 + Math.sin(t * 4) * 0.15 : 0;
+  gmLocal.keyCd -= dt; gmLocal.tagCd -= dt;
+  // BTM: the monster tags survivors; survivors hear it coming
+  if (GM.mode === 'btm' && GM.phase === 'play') {
+    const iAmMonster = GM.monster === myId;
+    if (iAmMonster && GM.t < 12) { if (Math.hypot(h.x - MR_SPOT.x, h.z - MR_SPOT.z) > 1.5) teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); } // counting...
+    for (const [id, r] of remotes) {
+      const target = GM.parts.includes(id) && id !== GM.monster && !GM.caught.includes(id) && !GM.escaped.includes(id);
+      if (!r.glow) { r.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(r.glow); }
+      r.glow.visible = iAmMonster && target; if (r.glow.visible) r.glow.position.copy(r.c.h).add(_gw.set(0, 0.35, 0));
+      if (iAmMonster && target && GM.t >= 12 && gmLocal.tagCd <= 0) {
+        const c = r.c.h; if (h.distanceTo(c) < 0.6 || myPose.l.distanceTo(c) < 0.45 || myPose.r.distanceTo(c) < 0.45) { gmLocal.tagCd = 1; gmReport('gmtag', { id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); }
+      }
+      if (!iAmMonster && id === GM.monster && GM.parts.includes(myId) && !GM.caught.includes(myId)) {
+        const d = h.distanceTo(r.c.h); if (d < 14 && (gmLocal.beatT -= dt) <= 0) { gmLocal.beatT = 0.3 + d / 14 * 1.2; sfx(60, 40, 0.12, 'sine', 0.3 * (1 - d / 14) + 0.08); sfx(55, 35, 0.1, 'sine', 0.2 * (1 - d / 14) + 0.05, 0.14); }
+      }
+    }
+  } else for (const r of remotes.values()) if (r.glow) r.glow.visible = false;
+  if (gmLocal.scareT > 0) { gmLocal.scareT -= dt; scare.visible = gmLocal.scareT > 0; scare.position.z = -0.3 + Math.sin(t * 60) * 0.01; }
+  if (GM.phase !== 'idle') drawGmHud(); else if (gmHudText) { gmHudText = ''; gmHudEl.style.display = 'none'; drawGmHud(); }
+  gmPanel.m.visible = renderer.xr.isPresenting && !!gmHudText;
+}
+// the host's monster brain: wander between rooms, chase whoever gets close (slower through walls)
+function hostLongarm(dt, alive) {
+  const ai = GM.ai; let target = null, best = 13;
+  for (const id of alive) { const p = id === myId ? myPose.h : remotes.get(id)?.c.h; if (!p) continue; const d = Math.hypot(p.x - ai.x, p.z - ai.z); if (d < best) { best = d; target = p; } }
+  if (target) { gmLocal.aiTarget.set(target.x, 0, target.z); if (ai.st !== 'chase') sfx(90, 45, 0.6, 'sawtooth', 0.12); ai.st = 'chase'; gmLocal.aiLost = 0; }
+  else if (ai.st === 'chase' && (gmLocal.aiLost += dt) > 4) ai.st = 'wander';
+  if (ai.st === 'wander' && Math.hypot(gmLocal.aiTarget.x - ai.x, gmLocal.aiTarget.z - ai.z) < 1) gmLocal.aiTarget.copy(OPEN_CELLS[Math.floor(Math.random() * OPEN_CELLS.length)]);
+  _gw.set(gmLocal.aiTarget.x - ai.x, 0, gmLocal.aiTarget.z - ai.z); const d = _gw.length();
+  const speed = (ai.st === 'chase' ? 3.4 : 1.8) * (wallAt(ai.x, ai.z) ? 0.45 : 1) * (GM.t < 8 ? 0 : 1); // waits 8 s at the start
+  if (d > 0.05) { ai.x += _gw.x / d * Math.min(d, speed * dt); ai.z += _gw.z / d * Math.min(d, speed * dt); ai.yaw = Math.atan2(_gw.x, _gw.z); }
+}
+
+// ================= AI GORILLAS (LVL ???) =================
+// They roam the lobby with a new random color every time, and join BTM as survivors when you're alone.
+const randFur = () => new THREE.Color().setHSL(Math.random(), 0.7 + Math.random() * 0.25, 0.45 + Math.random() * 0.2).getHex();
+const lobbySpot = out => { const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 16; return out.set(Math.cos(a) * r, 0, Math.sin(a) * r + 3); };
+const BOTS = Array.from({ length: 5 }, (_, i) => {
+  const g = makeGorilla(randFur()); g.setName('LVL ???');
+  const b = { id: 'bot' + i, g, pose: mkPose(), pos: new THREE.Vector3(), target: new THREE.Vector3(), ground: 0, yaw: Math.random() * 6, t: Math.random() * 3, hop: 0, hopV: 0, walk: 0, mode: 'lobby', glow: null };
+  lobbySpot(b.pos); b.target.copy(b.pos); return b;
+});
+const _bq2 = new THREE.Quaternion(), _bd2 = new THREE.Vector3();
+function botTo(b, p) { b.pos.copy(p); b.target.copy(p); b.ground = groundAt(p.x, p.z, 30); if (b.ground < -1e8) b.ground = 0; }
+function updateBots(dt, t) {
+  const btmOn = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play');
+  for (const b of BOTS) {
+    const inRound = btmOn && GM.parts.includes(b.id), caught = GM.caught.includes(b.id);
+    // follow the round
+    if (inRound && GM.phase === 'count' && b.mode !== 'wait') { b.mode = 'wait'; botTo(b, _bd2.set(MX - 4 + Number(b.id.slice(3)) * 2, 0, MZ + 25)); }
+    else if (inRound && GM.phase === 'play' && !caught && (b.mode === 'wait' || b.mode === 'lobby')) { b.mode = 'btm'; botTo(b, OPEN_CELLS[(Number(b.id.slice(3)) * 11 + 5) % OPEN_CELLS.length]); }
+    else if (inRound && caught && b.mode !== 'out') { b.mode = 'out'; botTo(b, _bd2.set(MX + 4.5 - Number(b.id.slice(3)), 0, MZ + 30)); }
+    else if (!inRound && b.mode !== 'lobby') { b.mode = 'lobby'; b.g.setColor(randFur()); botTo(b, lobbySpot(_bd2)); }
+    // where to go
+    b.t -= dt; let speed = 1.5;
+    if (b.mode === 'lobby' && b.t <= 0) { b.t = 3 + Math.random() * 5; lobbySpot(b.target); }
+    if (b.mode === 'btm') {
+      const mon = GM.monster === myId ? myPose.h : remotes.get(GM.monster)?.c.h;
+      const d = mon ? Math.hypot(mon.x - b.pos.x, mon.z - b.pos.z) : 99;
+      if (mon && d < 10 && GM.t >= 12) { _bd2.set(b.pos.x - mon.x, 0, b.pos.z - mon.z).normalize(); b.target.set(b.pos.x + _bd2.x * 6 + (Math.random() - 0.5) * 2, 0, b.pos.z + _bd2.z * 6 + (Math.random() - 0.5) * 2); speed = 3.1; } // run!
+      else if (b.t <= 0) { b.t = 4 + Math.random() * 4; b.target.copy(OPEN_CELLS[Math.floor(Math.random() * OPEN_CELLS.length)]); }
+      b.target.x = Math.max(MX - 31, Math.min(MX + 31, b.target.x)); b.target.z = Math.max(MZ - 31, Math.min(MZ + 20, b.target.z));
+      if (wallAt(b.pos.x, b.pos.z)) speed *= 0.5;
+    }
+    if (b.mode === 'wait' || b.mode === 'out') speed = 0;
+    _bd2.set(b.target.x - b.pos.x, 0, b.target.z - b.pos.z); const dist = _bd2.length();
+    if (dist > 0.1 && speed > 0) { b.pos.addScaledVector(_bd2, Math.min(dist, speed * dt) / dist); b.yaw = Math.atan2(-_bd2.x, -_bd2.z); }
+    b.walk += ((dist > 0.15 && speed > 0 ? Math.min(1, speed / 3) : 0) - b.walk) * (1 - Math.exp(-6 * dt));
+    // stand on whatever is below (step up small ledges), hop now and then
+    const g = groundAt(b.pos.x, b.pos.z, b.ground + 0.7); if (g > -1e8) b.ground += (g - b.ground) * (1 - Math.exp(-12 * dt));
+    if (b.hop <= 0 && Math.random() < dt * 0.15 && speed > 0) b.hopV = 2.6;
+    b.hopV -= G * dt; b.hop = Math.max(0, b.hop + b.hopV * dt); if (b.hop === 0 && b.hopV < 0) b.hopV = 0;
+    // pose: knuckle-walking gorilla
+    const p = b.pose, sw = Math.sin(t * 7 + b.yaw) * b.walk;
+    p.h.set(b.pos.x, b.ground + 0.55 + b.hop, b.pos.z);
+    if (!b.walk || b.walk < 0.2) { const lp = myPose.h; if (Math.hypot(lp.x - b.pos.x, lp.z - b.pos.z) < 5) b.yaw += ((Math.atan2(-(lp.x - b.pos.x), -(lp.z - b.pos.z)) - b.yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) * (1 - Math.exp(-4 * dt)); } // look at you
+    _bq2.setFromAxisAngle(_up, b.yaw); p.q.copy(_bq2);
+    p.l.set(-0.34, -0.42 + Math.max(0, sw) * 0.12, -0.3 + sw * 0.25).applyQuaternion(_bq2).add(p.h);
+    p.r.set(0.34, -0.42 + Math.max(0, -sw) * 0.12, -0.3 - sw * 0.25).applyQuaternion(_bq2).add(p.h);
+    p.lq.copy(_bq2); p.rq.copy(_bq2);
+    b.g.update(p, dt);
+    // the BTM monster sees survivors glowing through the fog
+    if (!b.glow) { b.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(b.glow); }
+    b.glow.visible = b.mode === 'btm' && GM.monster === myId; if (b.glow.visible) b.glow.position.copy(p.h).add(_bd2.set(0, 0.35, 0));
+    // you (the monster) catch them by touching
+    if (b.mode === 'btm' && GM.monster === myId && GM.phase === 'play' && GM.t >= 12 && gmLocal.tagCd <= 0 && (myPose.h.distanceTo(p.h) < 0.65 || myPose.l.distanceTo(p.h) < 0.5 || myPose.r.distanceTo(p.h) < 0.5)) {
+      gmLocal.tagCd = 0.6; gmReport('gmtag', { id: b.id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); burst(p.h, 0xff3b6b);
+    }
+  }
+}
+
+window.__boss = { BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -2990,7 +3307,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } if (BT.active) btHands(dt); else updateXR(dt); }
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
