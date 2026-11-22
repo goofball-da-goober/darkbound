@@ -43,7 +43,7 @@
   • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
   • <b>Battles (new!):</b> touch a roaming monster. Touch / 1-4: pick, swing / Space: slap, hand / WASD: dodge<br>
-  • <b>Hat Stand:</b> by spawn, buy hats with bananas<br>
+  • <b>Hat Stand:</b> by spawn, buy hats with Bound Bucks<br>
   • <b>Game modes:</b> red GAME MODES portal west of spawn → the Darkwood: HORROR (a monster hunts you) and BTM (a player is the monster)<br>
   • <b>COMPUTAH:</b> east of spawn. Walk up, press <b>T</b> to type: name, room codes, color, turning, mic, volume, save codes<br>
   • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
@@ -62,7 +62,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 try { await Promise.race([document.fonts.load('40px "Lilita One"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
 
 // ================= TUNING (Gorilla-style locomotion) =================
-const VERSION = 'ALPHA 0.2', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
+const VERSION = 'ALPHA 0.3', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
 const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
@@ -726,7 +726,8 @@ function makeGorilla(color) {
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
-  let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null, roboGlow = null;
+  let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null, roboGlow = null, monForm = '';
+  const formObjs = [];
 
   return {
     root, head, body,
@@ -753,12 +754,21 @@ function makeGorilla(color) {
       part(body, S(0.055, 10, 8), roboGlow, [0, 0.03, -0.2], [1, 1, 0.5], 0);                                // chest core
       part(body, new THREE.TorusGeometry(0.065, 0.012, 6, 16), bolt, [0, 0.03, -0.195], null, 0);
     },
-    setMonster(on, normal) {
-      if (on === isMon) return; isMon = on;
+    setMonster(on, normal, form) {
+      if (on === isMon && form === monForm) return; isMon = on; monForm = form;
+      for (const o of formObjs) o.parent?.remove(o); formObjs.length = 0;
+      if (on && form === 'chainsaw') { // a buzzing chainsaw in the right hand
+        const saw = new THREE.Group(); arms[1].hand.add(saw); formObjs.push(saw); saw.position.set(0, -0.02, -0.06);
+        part(saw, new THREE.BoxGeometry(0.06, 0.05, 0.08), toon(0xe0702a, 0.3), null, null, 0.004);
+        part(saw, new THREE.BoxGeometry(0.018, 0.04, 0.2), toon(0x9aa3b0, 0.2), [0, 0, -0.13], null, 0.004);
+        for (let i = 0; i < 6; i++) part(saw, new THREE.ConeGeometry(0.008, 0.02, 4), toon(0xdfe5ee, 0.3), [0, 0.026, -0.05 - i * 0.033], null, 0);
+      }
+      if (on && form === 'reach') for (const A of arms) { const c = new THREE.Group(); A.hand.add(c); formObjs.push(c); for (let i = 0; i < 3; i++) part(c, new THREE.ConeGeometry(0.01, 0.16, 6), toon(0xd8d0e0, 0.2), [-0.03 + i * 0.03, 0.01, -0.12], null, 0.003).rotation.x = -Math.PI / 2; } // long claws
+      if (on && form === 'brute') { const sp = new THREE.Group(); body.add(sp); formObjs.push(sp); for (let i = 0; i < 5; i++) part(sp, new THREE.ConeGeometry(0.04, 0.13, 6), toon(0x5a0a1a, 0.3), [-0.16 + i * 0.08, 0.16, 0.12], null, 0.004).rotation.x = 0.5; } // spiked back
       if (!monObj) { monObj = new THREE.Group(); const hornM = toon(0x5a0a1a, 0.3), eyeM = new THREE.MeshBasicMaterial({ color: 0xff1a2a });
         for (const s of [-1, 1]) { part(monObj, new THREE.ConeGeometry(0.035, 0.14, 8), hornM, [s * 0.08, 0.17, 0], null, 0.005).rotation.z = -s * 0.5; part(monObj, S(0.021, 8, 6), eyeM, [s * 0.046, 0.012, -0.2], null, 0); }
         skull.add(monObj); }
-      monObj.visible = on; if (on) this.setColor(0x2a0a14); else if (normal !== undefined) this.setColor(normal);
+      monObj.visible = on; if (on) this.setColor(form === 'shadow' ? 0x0a0a12 : 0x2a0a14); else if (normal !== undefined) this.setColor(normal);
     },
     setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
@@ -1300,6 +1310,13 @@ function makeBossModel(def) {
     const orbit = new THREE.Group(); head.add(orbit); spinners.push(orbit);
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; part(orbit, new THREE.OctahedronGeometry(0.2), glow, [Math.cos(a) * 1.75, Math.sin(i * 1.3) * 0.3, Math.sin(a) * 1.75], [1, 1.6, 1], 0.012); }
   }
+  if (st === 'king') { // the Hollow King: a tall golden crown with gems, a long dark cape, fangs
+    const gold = toon(0xffc83d, 0.35), gem = new THREE.MeshBasicMaterial({ color: 0xff3b6b });
+    part(head, new THREE.CylinderGeometry(0.75, 0.82, 0.32, 20, 1, true), gold, [0, 0.98, 0], null, 0.02).material.side = THREE.DoubleSide;
+    for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; part(head, new THREE.ConeGeometry(0.1, 0.55 + (i % 2) * 0.25, 6), gold, [Math.cos(a) * 0.76, 1.35 + (i % 2) * 0.12, Math.sin(a) * 0.76], null, 0.012); part(head, S(0.07, 8, 6), gem, [Math.cos(a) * 0.83, 1.0, Math.sin(a) * 0.83], null, 0); }
+    const cape = part(head, new THREE.ConeGeometry(1.6, 3.2, 24, 1, true), toon(0x2a0a2e, 0.1), [0, -1.5, -0.35], null, 0.02); cape.material.side = THREE.DoubleSide;
+    for (let i = 0; i < 6; i++) part(head, new THREE.ConeGeometry(0.05, 0.16, 4), B_WHITE, [-0.2 + i * 0.08, -0.44, 1.1], null, 0).rotation.x = Math.PI;
+  }
   if (st === 'mask') for (let i = -2; i <= 2; i++) part(head, new THREE.ConeGeometry(0.16, 0.6 - Math.abs(i) * 0.1, 10), skin, [i * 0.32, 1.02 - Math.abs(i) * 0.08, 0], null, 0.012).rotation.z = -i * 0.18;
   const hands = [-1, 1].map(s => {
     const g = new THREE.Group(); root.add(g);
@@ -1375,7 +1392,7 @@ function drawPeds() {
   for (const p of peds) {
     const s = p.isEye ? 'eye' : B.def ? (B.def === p.def ? 'fighting' : 'busy') : defeated.has(p.def.id) ? 'won' : 'ready';
     if (s === p.state) continue; p.state = s;
-    if (p.isEye) p.lab.draw(['THE EYE', 'SEALED UNTIL v' + EYE_VERSION, '#9b5cff']);
+    if (p.isEye) p.lab.draw(['THE EYE', 'SEALED... FOR NOW', '#9b5cff']);
     else p.lab.draw([p.def.name, { fighting: 'FIGHTING!', busy: 'WAIT YOUR TURN', won: 'DEFEATED ✓ TOUCH TO REMATCH', ready: 'TOUCH TO SUMMON' }[s], s === 'won' ? '#6dff9a' : '#ffd447']);
   }
 }
@@ -1468,7 +1485,7 @@ const B = { def: null, i: -1, model: null, hp: 0, maxHp: 1, idx: 0, phase: '', p
   pos: new THREE.Vector3(), yaw: 0, flash: 0, sendT: 0, emptyT: 0, volleyT: 0, dizzyTold: false };
 const P = { hp: 20, max: 20, inv: 0, flash: 0 };
 const BOSS_MSG = new Set(['bsum', 'bdmg', 'bhp', 'bend']);
-const BS = 1.25, R_HIT = 1.2 * BS, BH = FY + 0.8, S2W = 0.06, SPD = 0.03;
+const BS = 1.25, rHit = () => 1.2 * BS * (B.def?.scale || 1), BH = FY + 0.8, S2W = 0.06, SPD = 0.03;
 const HOME = new THREE.Vector3(AX, FY + 4.6, AZ - 5);
 const bossAuth = () => !(net.hostConn && net.hostConn.open); // the host (or a solo player) runs the boss
 function bsend(m) { if (net.isHost) broadcast(m); else if (net.hostConn?.open) net.hostConn.send(m); }
@@ -1520,8 +1537,8 @@ function damageBoss(n, local) {
 }
 function endBoss(win) {
   if (!B.def) return;
-  if (!win) { banner('THE BOSS LEFT', '', 2); clearBoss(); return; }
-  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED');
+  if (!win) { banner('THE BOSS LEFT', '', 2); clearBoss(); SB.active = 0; return; }
+  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED'); if (SB.active) storyBossWon();
   B.phase = 'dead'; B.pt = 0; B.bullets = []; clearLasers();
   banner('VICTORY!', B.def.name + ' IS DEFEATED', 4, '#6dff9a');
   [523, 659, 784, 1047].forEach((f, i) => sfx(f, f, 0.35, 'triangle', 0.18, i * 0.12));
@@ -1532,7 +1549,7 @@ function clearBoss() {
 }
 function trySummon(i) {
   const p = peds[i]; if (p.cd > 0) return; p.cd = 2;
-  if (p.isEye) { banner('THE EYE IS SEALED', 'IT WAKES UP IN VERSION ' + EYE_VERSION + ' • THIS IS ' + VERSION, 3.5, '#c9a36b'); eyeStare(3.5, 0.6); sfx(70, 45, 2, 'sine', 0.3); return; }
+  if (p.isEye) { banner('THE EYE IS SEALED', 'IT IS NOT TIME YET...', 3.5, '#c9a36b'); eyeStare(3.5, 0.6); sfx(70, 45, 2, 'sine', 0.3); return; }
   if (B.def) { banner('A BOSS IS ALREADY HERE', '', 1.5); return; }
   for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.8, 120);
   if (bossAuth()) startBoss(i); else { bsend({ t: 'bsum', b: i }); banner('SUMMONING…', '', 1.5); }
@@ -1709,7 +1726,7 @@ function updateFx(dt) {
 const _bossGoal = new THREE.Vector3(), _ploc = new THREE.Vector3(), _prevHand = [new THREE.Vector3(), new THREE.Vector3()];
 const nearArena = p => Math.abs(p.x - AX) < 25 && Math.abs(p.z - AZ) < 25;
 function bossAction() { // desktop: E / F / click
-  if (B.def && B.phase !== 'dead' && myPose.h.distanceTo(B.pos) < R_HIT + 1.2) { damageBoss(B.phase === 'stag' ? 35 : 15, true); return; }
+  if (B.def && B.phase !== 'dead' && myPose.h.distanceTo(B.pos) < rHit() + 1.2) { damageBoss(B.phase === 'stag' ? 35 : 15, true); return; }
   let best = -1, bd = 1.7;
   peds.forEach((p, i) => { const d = Math.hypot(myPose.h.x - PED[i].x, myPose.h.z - PED[i].z); if (d < bd) { bd = d; best = i; } });
   if (best >= 0) trySummon(best);
@@ -1724,7 +1741,7 @@ function updateBoss(dt, t) {
     if (!h.source || !renderer.xr.isPresenting) return;
     peds.forEach((p, i) => { if (h.last.distanceTo(p.fig.root.position) < 0.35) trySummon(i); });
     const speed = h.last.distanceTo(_prevHand[hi]) / Math.max(dt, 1e-3); _prevHand[hi].copy(h.last);
-    if (B.def && B.phase !== 'dead' && h.last.distanceTo(B.pos) < R_HIT + 0.1 && speed > 1.0 && performance.now() - (h.bossCd || 0) > 250) {
+    if (B.def && B.phase !== 'dead' && h.last.distanceTo(B.pos) < rHit() + 0.1 && speed > 1.0 && performance.now() - (h.bossCd || 0) > 250) {
       h.bossCd = performance.now();
       damageBoss(Math.round(Math.min(70, 15 + speed * 12) * (B.phase === 'stag' ? 1 : 0.5)), true);
       h.source.gamepad?.hapticActuators?.[0]?.pulse?.(1, 80); onTouch(h, 3);
@@ -1746,13 +1763,13 @@ function updateBoss(dt, t) {
     if (B.def) {
       // where the boss floats
       if (B.phase === 'intro') { _bossGoal.copy(HOME); }
-      else if (B.phase === 'stag') _bossGoal.set(AX, FY + 1.5, AZ - 2.5);
+      else if (B.phase === 'stag') _bossGoal.set(AX, FY + 1.5 * (B.def.scale || 1), AZ - 2.5);
       else _bossGoal.set(HOME.x + Math.sin(B.T * 0.5) * 2.5, HOME.y + Math.sin(B.T * 1.7) * 0.3, HOME.z);
       B.pos.lerp(_bossGoal, 1 - Math.exp(-(B.phase === 'stag' ? 5 : 2) * dt));
       m.root.position.copy(B.pos);
       if (B.phase === 'dead') { m.root.position.x += (Math.random() - 0.5) * 0.25; m.root.position.y += (Math.random() - 0.5) * 0.25; }
       const sc = B.phase === 'intro' ? Math.min(1, B.pt / 2) : B.phase === 'dead' ? Math.max(0.05, 1 - B.pt / 3.4) : 1;
-      m.root.scale.setScalar(BS * sc * (1 + B.flash * 0.06));
+      m.root.scale.setScalar(BS * (B.def.scale || 1) * sc * (1 + B.flash * 0.06));
       const wantYaw = Math.atan2(myPose.h.x - B.pos.x, myPose.h.z - B.pos.z); let dy = wantYaw - B.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
       B.yaw += dy * (1 - Math.exp(-3 * dt)); m.root.rotation.y = B.yaw;
       m.skin.emissiveIntensity = 0.22 + B.flash * 1.2 + (B.phase === 'stag' ? 0.15 + Math.sin(t * 10) * 0.1 : 0);
@@ -1769,13 +1786,13 @@ function updateBoss(dt, t) {
       // hands: hover, then slam the floor when dizzy
       m.hands.forEach((hg, i) => {
         const s = i ? 1 : -1;
-        if (B.phase === 'stag') hg.position.set(s * 2.0, (FY + 0.35 - B.pos.y) / BS, 0.6);
+        if (B.phase === 'stag') hg.position.set(s * 2.0, (FY + 0.35 - B.pos.y) / (BS * (B.def.scale || 1)), 0.6);
         else hg.position.set(s * 1.9, -0.4 + Math.sin(t * 2 + s) * 0.15, 0.5);
         hg.rotation.z = s * Math.sin(t * 1.5) * 0.2;
       });
       // don't let players walk inside the boss
       const d = myPose.h.distanceTo(B.pos);
-      if (d < R_HIT + 0.2 && d > 1e-3) { _bw.copy(myPose.h).sub(B.pos).setLength(R_HIT + 0.2 - d); rig.position.add(_bw); }
+      if (d < rHit() + 0.2 && d > 1e-3) { _bw.copy(myPose.h).sub(B.pos).setLength(rHit() + 0.2 - d); rig.position.add(_bw); }
       if (B.phase !== 'dead') updateBullets(dt);
       // the host keeps everyone in sync, and sends the boss home if nobody is around
       if (bossAuth()) {
@@ -1993,7 +2010,7 @@ function startStory() {
   CL.pos.set(SX + 1.6, 1.8, SZ - 1); CL.goal.copy(CL.pos);
   banner('THE HOLLOW', 'STORY MODE • CHAPTER 1', 3, '#ffb070');
   if (STORY.done) { makeBridge(); makePortal(); showC2Entry(); STORY.state = 'done'; for (const s of STORY.shards) { s.got = true; s.m.visible = false; }
-    say(['Oh! A gorilla! Have we met? You look... familiar. Are you a big squirrel?', 'Oh wait, it\'s YOU! The door is still locked. It opens in version two point... five? I think. Numbers are hard.', 'The gold portal next to you goes to Chapter 2. I think. Or it\'s a very shiny donut.', 'The other portal goes home. Probably.']); return; }
+    say(['Oh! A gorilla! Have we met? You look... familiar. Are you a big squirrel?', 'Oh wait, it\'s YOU! The door is still locked. Will it ever open? Nobody knows. Not even me. Especially not me.', 'The gold portal next to you goes to Chapter 2. I think. Or it\'s a very shiny donut.', 'The other portal goes home. Probably.']); return; }
   STORY.state = 'arrive'; STORY.got = 0; for (const sh of STORY.shards) { sh.got = false; sh.m.visible = true; }
   say(['Huh?! Something fell out of the sky! ...Oh. You\'re a gorilla. Hi! I\'m Claude! I think.', 'I keep the lights on down here. Wait. Are they on? It\'s a little dark. Hmm.', 'Somebody told me THE EYE made everything go dark. I forget who. Maybe it was a rock.', 'Uhh... climb the shiny gold steps up to me! Or down. No, up. Definitely up.'], () => {
     CL.goal.set(SX + 1.5, PLAT_Y + 1.5, SZ - 28); STORY.state = 'climb';
@@ -2073,9 +2090,9 @@ function updateStory(dt, t) {
   }
   if (STORY.state === 'bridge' && STORY.bridge && h.z < SZ - 46 && h.y > PLAT_Y - 0.5) {
     STORY.state = 'door'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 47);
-    say(['This is the Eye\'s door. Is it a door? It has an eye on it. Doors don\'t usually have eyes.', 'Somebody said the Eye is the O in DARKBOUND. Which O? There\'s only one O. Oh. That one.', 'It\'s sealed shut until version 2.5. I knocked once. It blinked at me. I ran away.', 'Go beat the Warden, the Witch and the... Collie-sus? In the Boss Arena. You\'ll get strong!', 'Oh, a gold CHAPTER 2 portal just opened where you landed! I didn\'t touch anything. I promise.', 'This portal goes home. Bye, gorilla! Or hello? I always mix those up.'], () => {
+    say(['This is the Eye\'s door. Is it a door? It has an eye on it. Doors don\'t usually have eyes.', 'Somebody said the Eye is the O in DARKBOUND. Which O? There\'s only one O. Oh. That one.', 'It\'s sealed shut. Nobody knows when it opens. I knocked once. It blinked at me. I ran away.', 'Go beat the Warden, the Witch and the... Collie-sus? In the Boss Arena. You\'ll get strong!', 'Oh, a gold CHAPTER 2 portal just opened where you landed! I didn\'t touch anything. I promise.', 'This portal goes home. Bye, gorilla! Or hello? I always mix those up.'], () => {
       makePortal(); STORY.state = 'done'; if (!STORY.done) addBananas(10, 'CHAPTER 1'); STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
-      banner('CHAPTER COMPLETE', 'TO BE CONTINUED IN v' + EYE_VERSION, 3.5, '#6dff9a');
+      banner('CHAPTER 1 COMPLETE', 'ON TO CHAPTER 2!', 3.5, '#6dff9a'); chainTo(startC2, 'CHAPTER 2');
     });
     eyeStare(4, 0.5);
   }
@@ -2241,7 +2258,7 @@ function updateC2(dt, t) {
     c2Say(['Ooooh, shiny! The lantern is on again! I knew it would work. I did not know it would work.', 'Every lantern we light makes the Eye weaker. Somebody told me that. Maybe the rock again.', 'I think the Eye saw us. Is it mad? It looks mad. Eyes always look mad.', 'Hey, a pink portal opened! Chapter 2.5, the Lantern Camp. My friends are there! I have friends!', 'The blue one goes home. Great job, gorilla! Or monkey? Are you a monkey? I\'m a monkey.'], () => {
       C2.home = storyPortal(C2X + 1.8, C2TOP + 1.3, C2Z - 31.8, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
       if (!C2.done) addBananas(10, 'CHAPTER 2'); C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { } showCampEntries();
-      banner('CHAPTER 2 COMPLETE', 'TO BE CONTINUED', 3.5, '#6dff9a');
+      banner('CHAPTER 2 COMPLETE', 'ON TO CHAPTER 2.5!', 3.5, '#6dff9a'); chainTo(startCamp, 'CHAPTER 2.5');
     });
   }
   if (C2.state === 'lit') { lanternFlame.scale.setScalar(1 + Math.sin(t * 9) * 0.12); lanternBeam.material.opacity = 0.2 + Math.sin(t * 2) * 0.06; }
@@ -2364,7 +2381,7 @@ function doryArrives() {
     B3.state = 'secret'; CL.lookAt = null; CL.goal.copy(myPose.h).add(new THREE.Vector3(0.9, 0.3, 0.6));
     say(['Psst. Gorilla. Come here. Closer. Not THAT close.', 'When Dory is near, my face gets hot and my tummy does a flip. Am I sick?', 'Nova says it\'s a "crush". What\'s a crush? Is it bad? Is it a fruit?', 'Whatever it is, DON\'T tell her! I don\'t even know what it is yet!', 'I\'ll figure it out some day. Maybe. Not in this chapter though.'], () => {
       banner('SECRET: CLAUDE ♥ DORY', 'YOU PROMISED NOT TO TELL', 3.5, '#ff5c8a');
-      B3.state = 'free'; if (!B3.done) addBananas(10, 'CHAPTER 2.5'); B3.done = true; try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
+      B3.state = 'free'; if (!B3.done) addBananas(10, 'CHAPTER 2.5'); B3.done = true; setTimeout(refreshSbEntries, 0); setTimeout(() => chainTo(() => startBossChapter(3), 'CHAPTER 3'), 6000); try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
       B3.tell = storyPortal(B3X - 2.2, 1.0, B3Z - 3.1, 'TELL DORY?', 'LOCKED: YOU PROMISED', 0xff5c8a); B3.tell.scale.setScalar(0.45);
       B3.home = storyPortal(B3X + 3, 1.4, B3Z + 9, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
       CL.goal.set(B3X + 1.2, 1.9, B3Z - 2.5);
@@ -2422,7 +2439,7 @@ bananaEl.style.cssText = 'position:fixed;right:max(16px,env(safe-area-inset-righ
 document.body.appendChild(bananaEl);
 function addBananas(n, why) {
   bananas += n; try { localStorage.setItem('darkbound-bananas', String(bananas)); } catch (e) { }
-  bananaEl.textContent = '🍌 ' + bananas; if (n > 0) { banner('+' + n + ' BANANAS', why || '', 2, '#ffd447'); [880, 1175].forEach((f, i) => sfx(f, f, 0.15, 'triangle', 0.12, i * 0.08)); }
+  bananaEl.textContent = 'BB ' + bananas; if (n > 0) { banner('+' + n + ' BOUND BUCKS', why || '', 2, '#ffd447'); [880, 1175].forEach((f, i) => sfx(f, f, 0.15, 'triangle', 0.12, i * 0.08)); }
 }
 addBananas(0);
 
@@ -2466,13 +2483,13 @@ const hatStand = HATS.map((hat, i) => {
   sign.position.set(p.x, p.y + 1.15, p.z); sign.rotation.y = Math.PI; scene.add(sign);
   return { hat, show, lab, cd: 0, state: '' };
 });
-{ const lab = labelTex(null, 1024, 256); lab.draw(['HAT STAND', 'TOUCH A HAT • BUY WITH BANANAS', '#ffd447']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '84px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('HAT STAND', 512, 125); lab.tex.needsUpdate = true;
+{ const lab = labelTex(null, 1024, 256); lab.draw(['HAT STAND', 'TOUCH A HAT • BUY WITH BOUND BUCKS', '#ffd447']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '84px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('HAT STAND', 512, 125); lab.tex.needsUpdate = true;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(-5.5, 2.75, 10.9); m.rotation.y = Math.PI; scene.add(m); }
 function drawHatStand() {
   for (const s of hatStand) {
     const st = hatSave.on === s.hat.id ? 'on' : hatSave.owned.includes(s.hat.id) ? 'own' : bananas >= s.hat.cost ? 'buy' : 'poor';
     if (st === s.state) continue; s.state = st;
-    s.lab.draw([s.hat.name, { on: 'WEARING • TOUCH TO TAKE OFF', own: 'TOUCH TO WEAR', buy: '🍌 ' + s.hat.cost + ' • TOUCH TO BUY', poor: '🍌 ' + s.hat.cost + ' • NEED MORE' }[st], st === 'poor' ? '#ff5c8a' : st === 'on' ? '#6dff9a' : '#ffd447']);
+    s.lab.draw([s.hat.name, { on: 'WEARING • TOUCH TO TAKE OFF', own: 'TOUCH TO WEAR', buy: 'BB ' + s.hat.cost + ' • TOUCH TO BUY', poor: 'BB ' + s.hat.cost + ' • NEED MORE' }[st], st === 'poor' ? '#ff5c8a' : st === 'on' ? '#6dff9a' : '#ffd447']);
   }
 }
 function useHat(s) {
@@ -2481,7 +2498,7 @@ function useHat(s) {
   if (hatSave.on === h.id) { hatSave.on = null; banner('HAT OFF', '', 1.2); }
   else if (hatSave.owned.includes(h.id)) { hatSave.on = h.id; banner('WEARING: ' + h.name, '', 1.5, '#6dff9a'); }
   else if (bananas >= h.cost) { addBananas(-h.cost); hatSave.owned.push(h.id); hatSave.on = h.id; banner('BOUGHT: ' + h.name, 'LOOKING GOOD', 2, '#6dff9a'); sfx(523, 1047, 0.3, 'triangle', 0.15); }
-  else { banner('NOT ENOUGH BANANAS', 'NEED ' + h.cost + ' • YOU HAVE ' + bananas, 1.8, '#ff5c8a'); return; }
+  else { banner('NOT ENOUGH BOUND BUCKS', 'NEED ' + h.cost + ' • YOU HAVE ' + bananas, 1.8, '#ff5c8a'); return; }
   saveHats(); me.setHat(hatSave.on); s.state = ''; for (const x of hatStand) x.state = '';
 }
 function updateHats(dt, t) {
@@ -2499,9 +2516,9 @@ addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; l
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 1024; const c = cv.getContext('2d');
   c.fillStyle = 'rgba(10,5,25,0.92)'; c.fillRect(0, 0, 1024, 1024); c.strokeStyle = '#6dff9a'; c.lineWidth = 10; c.strokeRect(5, 5, 1014, 1014);
   c.fillStyle = '#6dff9a'; c.font = '76px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
-  c.fillStyle = '#ffd447'; c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillText('ALPHA 0.2', 512, 165);
+  c.fillStyle = '#ffd447'; c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillText(VERSION, 512, 165);
   c.textAlign = 'left'; c.font = '36px "Lilita One", system-ui, sans-serif';
-  ['⚔ DARK BATTLES: touch a roaming', '  monster to fight it, turn by turn', '  SLAP • TALK • SNACK • CHILL', '  then dodge in the battle box!', '', '🦀 NEW: Bolt Crab', '🍌 BANANAS: win battles, bosses', '  and story chapters', '🎩 HAT STAND: buy hats, everyone', '  sees them', '🌲 DARKWOOD portal (west): HORROR', '  + BTM monster modes!']
+  ['🦍 BTM MONSTERS: Chainsaw,', '  Longreach, Shadow & Brute', '📖 STORY: Chapters 3, 4 & 5:', '  boss fights with Claude!', 'BB BOUND BUCKS: the new money', '🎨 NEW LOOK: a cartoon world', '🌲 DARKWOOD (west portal):', '  HORROR + BTM', '🤖 LVL ??? robot gorillas', '🌐 PUBLIC ROOMS like [B3ED]', '💻 COMPUTAH by spawn', '⚔ DARK BATTLES + HAT STAND']
     .forEach((l, i) => { c.fillStyle = l.startsWith(' ') ? '#cbbcf0' : '#ffffff'; c.fillText(l, 60, 250 + i * 62); });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(5.6, 1.6, 10.8); m.rotation.y = Math.PI; scene.add(m);
@@ -2593,7 +2610,7 @@ function drawPanelText(p, lines, border) {
 }
 function bar(c, x, y, w, h, f, col) { c.fillStyle = '#2a1640'; c.fillRect(x, y, w, h); c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, f)), h); c.strokeStyle = '#fff'; c.lineWidth = 3; c.strokeRect(x, y, w, h); }
 function drawBtTop() { const d = BT.def; drawPanelText(btTop, [c => { c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(d.name, 20, 55); c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText('HP', 400, 40); bar(c, 450, 25, 240, 30, BT.ehp / BT.emax, d.color); c.fillText('CALM', 400, 82); bar(c, 490, 70, 200, 24, BT.calm / 100, '#6dff9a'); c.fillStyle = BT.calm >= 100 ? '#6dff9a' : '#cbbcf0'; c.fillText(BT.calm >= 100 ? 'READY TO CHILL!' : '', 720, 82); }], d.color); }
-function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = '40px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   🍌 ' + bananas, 610, 42); }], '#9b5cff'); }
+function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = '40px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   BB ' + bananas, 610, 42); }], '#9b5cff'); }
 function drawBtn(i, label, enabled = true) {
   const p = btBtns[i]; p.label = label; p.enabled = enabled && !!label;
   drawPanelText(p, [c => { if (!label) return; c.fillStyle = p.hot ? '#ffd447' : enabled ? 'rgba(20,10,40,0.95)' : 'rgba(20,10,40,0.5)'; c.fillRect(0, 0, 256, 156); c.strokeStyle = enabled ? '#ffd447' : '#555'; c.lineWidth = 8; c.strokeRect(4, 4, 248, 148); c.fillStyle = p.hot ? '#1a0b2e' : enabled ? '#fff' : '#777'; c.textAlign = 'center'; c.textBaseline = 'middle'; const words = label.split(' '); c.font = 'bold ' + (label.length > 10 ? 30 : 44) + 'px "Lilita One", system-ui, sans-serif'; if (words.length > 1 && label.length > 10) { c.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 128, 58); c.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 128, 100); } else c.fillText(label, 128, 80); }]);
@@ -2624,6 +2641,7 @@ function startBattle(type, roam) {
   btSay(['A ' + d.name.toLowerCase() + ' blocks the way!'], setMenu);
 }
 function endBattle(result) {
+  const storyFight = BT.story; BT.story = null;
   BT.active = false; btRoot.visible = false; btDim.visible = false; BT.bullets = []; clearBtLasers();
   if (BT.model) { btRoot.remove(BT.model.root); scene.remove(BT.model.root); BT.model = null; }
   const r = BT.roam;
@@ -2631,6 +2649,7 @@ function endBattle(result) {
   if (result === 'win' || result === 'chill') { try { localStorage.setItem('darkbound-wins', String((+localStorage.getItem('darkbound-wins') || 0) + 1)); } catch (e) { } }
   if (result === 'win') addBananas(5, 'YOU WON THE BATTLE');
   if (result === 'chill') addBananas(8, 'YOU MADE A FRIEND (PEACE BONUS)');
+  if (storyFight) { if (result === 'lose') { banner('YOU GOT BONKED', 'TRY AGAIN!', 2, '#ff3b6b'); setTimeout(() => storyFight.retry(), 2500); } else setTimeout(() => storyFight.next(), 1500); return; }
   if (result === 'lose') { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('YOU GOT BONKED', 'BACK TO SPAWN. TRY TALKING NEXT TIME?', 2.5, '#ff3b6b'); }
 }
 function btChoose(i) {
@@ -2872,7 +2891,7 @@ function loadSaveCode(code) {
   ['warden', 'witch', 'colossus'].forEach((id, i) => { if (bits & (8 << i)) defeated.add(id); }); saveDefeated();
   HATS.forEach((h, i) => { if (bits & (64 << i) && !hatSave.owned.includes(h.id)) hatSave.owned.push(h.id); }); saveHats();
   for (const x of hatStand) x.state = ''; for (const p of peds) p.state = '';
-  return 'LOADED! ' + b + ' BANANAS AND YOUR PROGRESS';
+  return 'LOADED! ' + b + ' BOUND BUCKS AND YOUR PROGRESS';
 }
 // ---- pressing keys ----
 function compKey(k) {
@@ -2922,10 +2941,10 @@ function drawComp() {
   if (menu === 'TURN') { line('HOW THE RIGHT STICK TURNS YOU', '#5ef2ff', 28); choice([['snap30', 'SNAP 30°'], ['snap45', 'SNAP 45°'], ['smooth', 'SMOOTH']], SET.turn); }
   if (menu === 'MIC') { line('VOICE CHAT', '#5ef2ff', 28); choice([['open', 'OPEN MIC (X = MUTE)'], ['ptt', 'PUSH TO TALK (HOLD X)'], ['off', 'MUTED']], SET.mic); }
   if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS'].forEach((n, i) => { const v = i ? SET.sfxVol : SET.voiceVol, on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
-  if (menu === 'SAVE CODE') { line('YOUR SAVE CODE:', '#cbbcf0', 26); line(makeSaveCode(), '#ffd447', 54); line('TYPE IT ON YOUR OTHER DEVICE TO', '#cbbcf0', 24); line('BRING YOUR BANANAS, HATS, BOSSES & STORY', '#cbbcf0', 24); field('GOT A CODE? TYPE IT, THEN ENTER:'); }
+  if (menu === 'SAVE CODE') { line('YOUR SAVE CODE:', '#cbbcf0', 26); line(makeSaveCode(), '#ffd447', 54); line('TYPE IT ON YOUR OTHER DEVICE TO', '#cbbcf0', 24); line('BRING YOUR BOUND BUCKS, HATS, BOSSES & STORY', '#cbbcf0', 24); field('GOT A CODE? TYPE IT, THEN ENTER:'); }
   if (menu === 'STATS') { const wins = (() => { try { return +localStorage.getItem('darkbound-wins') || 0; } catch (e) { return 0; } })(), mins = Math.floor(((() => { try { return +localStorage.getItem('darkbound-time') || 0; } catch (e) { return 0; } })() + CP.playT) / 60);
-    [['DEVICE', DEVICE_NAME], ['BANANAS', bananas], ['BATTLES WON', wins], ['BOSSES BEATEN', defeated.size + ' / 3'], ['STORY', [isDone('darkbound-story-1') && '1', isDone('darkbound-story-2') && '2', isDone('darkbound-story-25') && '2.5'].filter(Boolean).join(', ') || 'NOT STARTED'], ['HATS', hatSave.owned.length + ' / ' + HATS.length], ['PLAY TIME', mins + ' MIN']].forEach(([k, v]) => line(k + ': ' + v, '#ffffff', 28)); }
-  if (menu === 'CREDITS') { line('DARKBOUND', '#5ef2ff', 44); line('A GORILLA VR GAME', '#cbbcf0', 26); line('IDEAS, STORY, BOSSES & LORE: THE CREATOR', '#ffffff', 24); line('CODE HELP: CLAUDE', '#ffffff', 24); line('THE EYE WAKES UP IN v2.5', '#ff5c8a', 24); line('THANKS FOR PLAYING!', '#6dff9a', 28); }
+    [['DEVICE', DEVICE_NAME], ['BOUND BUCKS', bananas], ['BATTLES WON', wins], ['BOSSES BEATEN', defeated.size + ' / 3'], ['STORY', [isDone('darkbound-story-1') && '1', isDone('darkbound-story-2') && '2', isDone('darkbound-story-25') && '2.5'].filter(Boolean).join(', ') || 'NOT STARTED'], ['HATS', hatSave.owned.length + ' / ' + HATS.length], ['PLAY TIME', mins + ' MIN']].forEach(([k, v]) => line(k + ': ' + v, '#ffffff', 28)); }
+  if (menu === 'CREDITS') { line('DARKBOUND', '#5ef2ff', 44); line('A GORILLA VR GAME', '#cbbcf0', 26); line('IDEAS, STORY, BOSSES & LORE: THE CREATOR', '#ffffff', 24); line('CODE HELP: CLAUDE', '#ffffff', 24); line('THE EYE IS WATCHING...', '#ff5c8a', 24); line('THANKS FOR PLAYING!', '#6dff9a', 28); }
   if (CP.msg) { c.fillStyle = '#6dff9a'; c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText(CP.msg, 325, 560); }
   c.fillStyle = '#8f80b8'; c.font = '22px "Lilita One", system-ui, sans-serif';
   c.fillText(DEVICE === 'pc' ? (CP.typing ? 'TYPING! ARROWS: MENU  , . / : OPT 1-3  ESC: STOP' : 'PRESS T NEAR THE COMPUTAH TO TYPE') : DEVICE === 'mobile' ? 'TAP THE KEYS TO TYPE' : 'PRESS THE KEYS WITH YOUR HANDS', 20, 610);
@@ -3081,7 +3100,7 @@ let gmHudText = '';
 function gmStatusText() {
   if (GM.phase === 'idle') return '';
   const left = Math.max(0, Math.ceil(GM.dur - GM.t)), mm = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
-  const me = GM.parts.includes(myId), role = !me ? 'WATCHING' : GM.caught.includes(myId) ? 'CAUGHT' : GM.escaped.includes(myId) ? 'ESCAPED' : GM.mode === 'btm' && GM.monster === myId ? 'YOU ARE THE MONSTER' : 'SURVIVOR';
+  const me = GM.parts.includes(myId), role = !me ? 'WATCHING' : GM.caught.includes(myId) ? 'CAUGHT' : GM.escaped.includes(myId) ? 'ESCAPED' : GM.mode === 'btm' && GM.monster === myId ? 'YOU ARE THE ' + (FORM_NAME[GM.form] || 'MONSTER') : 'SURVIVOR';
   if (GM.phase === 'count') return GMODE[GM.mode].name + ' STARTS IN ' + Math.max(1, Math.ceil(5 - GM.t));
   if (GM.phase === 'end') return GM.result;
   const alive = GM.parts.filter(id => !GM.caught.includes(id) && !GM.escaped.includes(id) && id !== GM.monster).length;
@@ -3097,20 +3116,20 @@ function drawGmHud() {
 }
 // ---- the host runs the round ----
 const gmAuth = () => bossAuth();
-function gmSend() { bsend({ t: 'gm', mode: GM.mode, phase: GM.phase, tt: +GM.t.toFixed(1), dur: GM.dur, parts: GM.parts, caught: GM.caught, escaped: GM.escaped, monster: GM.monster, keys: GM.keys, ai: [+GM.ai.x.toFixed(2), +GM.ai.z.toFixed(2), +GM.ai.yaw.toFixed(2)], result: GM.result }); }
+function gmSend() { bsend({ t: 'gm', mode: GM.mode, phase: GM.phase, tt: +GM.t.toFixed(1), dur: GM.dur, parts: GM.parts, caught: GM.caught, escaped: GM.escaped, monster: GM.monster, form: GM.form, keys: GM.keys, ai: [+GM.ai.x.toFixed(2), +GM.ai.z.toFixed(2), +GM.ai.yaw.toFixed(2)], result: GM.result }); }
 function gmPlayersInDW() { const ids = []; if (inDW(myPose.h)) ids.push(myId); for (const [id, r] of remotes) if (inDW(r.c.h)) ids.push(id); return ids; }
 function gmStart(mode) {
   if (GM.phase !== 'idle') return;
   const parts = gmPlayersInDW();
   let withBots = false;
   if (mode === 'btm' && parts.length < 2) { if (remotes.size) { banner('BTM NEEDS 2+ PLAYERS IN HERE', 'GET YOUR FRIENDS INTO THE DARKWOOD', 2.5, '#ff3b6b'); return; } withBots = true; for (const b of BOTS.slice(0, 4)) parts.push(b.id); banner('THE AI GORILLAS WILL PLAY', 'YOU ARE THE MONSTER!', 2.5, '#ff3b6b'); }
-  Object.assign(GM, { mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '' });
+  Object.assign(GM, { mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '', form: MON_FORMS[Math.floor(Math.random() * MON_FORMS.length)] });
   GM.ai = { x: MX, z: MZ - 14, yaw: 0, st: 'wander' }; gmLocal.aiPos.set(MX, 0, MZ - 14);
   gmSend(); gmApply(true);
 }
 function gmFinish(result) { GM.phase = 'end'; GM.t = 0; GM.result = result; gmSend(); gmApply(true); }
 function gmNet(d) {
-  if (d.t === 'gm') { if (!gmAuth()) { Object.assign(GM, { mode: d.mode, phase: d.phase, dur: d.dur, parts: d.parts || [], caught: d.caught || [], escaped: d.escaped || [], monster: d.monster || '', keys: d.keys || 0, result: d.result || '' }); GM.t = d.tt; if (d.ai) { GM.ai.x = d.ai[0]; GM.ai.z = d.ai[1]; GM.ai.yaw = d.ai[2]; } gmApply(false); } return; }
+  if (d.t === 'gm') { if (!gmAuth()) { Object.assign(GM, { mode: d.mode, phase: d.phase, dur: d.dur, parts: d.parts || [], caught: d.caught || [], escaped: d.escaped || [], monster: d.monster || '', form: d.form || '', keys: d.keys || 0, result: d.result || '' }); GM.t = d.tt; if (d.ai) { GM.ai.x = d.ai[0]; GM.ai.z = d.ai[1]; GM.ai.yaw = d.ai[2]; } gmApply(false); } return; }
   if (!gmAuth()) return;
   if (d.t === 'gmreq' && GMODE[d.mode]) gmStart(d.mode);
   if (d.t === 'gmkey' && GM.phase === 'play' && d.i >= 0 && d.i < 6) { GM.keys |= 1 << d.i; gmSend(); gmApply(false); }
@@ -3124,7 +3143,7 @@ function gmApply() {
   const me = GM.parts.includes(myId);
   if (GM.phase !== gmLocal.phase) {
     const was = gmLocal.phase; gmLocal.phase = GM.phase;
-    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE MONSTER!' : 'RUN AND HIDE!') : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
+    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE ' + FORM_NAME[GM.form] + '!' : 'RUN! THE MONSTER IS THE ' + FORM_NAME[GM.form]) : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
     if (GM.phase === 'play' && me) {
       const sp = OPEN_CELLS[(GM.parts.indexOf(myId) * 7 + 3) % OPEN_CELLS.length];
       if (GM.mode === 'btm' && GM.monster === myId) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); banner('COUNTING TO 12...', 'THEN HUNT THEM DOWN', 3, '#ff3b6b'); }
@@ -3143,12 +3162,32 @@ function gmApply() {
   if (GM.escaped.includes(myId) && !gmLocal.escapedMe) { gmLocal.escapedMe = true; banner('YOU ESCAPED!', 'WAIT FOR THE OTHERS IN THE MODE ROOM', 2.5, '#6dff9a'); teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }
   // monster looks (BTM)
   me_monster(GM.mode === 'btm' && GM.phase !== 'idle' && GM.phase !== 'end' && GM.monster === myId);
-  for (const [id, r] of remotes) r.g.setMonster(GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id, r.fur);
+  for (const [id, r] of remotes) { r.g.setMonster(GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id, r.fur, GM.form); r.g.root.visible = true; }
   for (let i = 0; i < 6; i++) dwKeys[i].visible = GM.mode === 'horror' && GM.phase === 'play' && !(GM.keys & (1 << i));
   drawGmPeds(); gmHudText = '~'; drawGmHud();
 }
 let meMonsterOn = false;
-function me_monster(on) { if (on === meMonsterOn) return; meMonsterOn = on; me.setMonster(on, MY_COLOR); moveBoost = on ? 1.35 : 1; }
+const MON_FORMS = ['chainsaw', 'reach', 'shadow', 'brute'];
+const FORM_NAME = { chainsaw: 'CHAINSAW', reach: 'LONGREACH', shadow: 'SHADOW', brute: 'BRUTE' };
+const FORM_SPEED = { chainsaw: 1.35, reach: 1.25, shadow: 1.3, brute: 1.15 };
+const tagMul = () => GM.form === 'reach' ? 1.7 : GM.form === 'brute' ? 1.3 : 1; // Longreach grabs from far, Brute is huge
+let meMonsterForm = '';
+function me_monster(on) { if (on === meMonsterOn && GM.form === meMonsterForm) return; meMonsterOn = on; meMonsterForm = GM.form; me.setMonster(on, MY_COLOR, GM.form); moveBoost = on ? FORM_SPEED[GM.form] || 1.35 : 1; }
+// what the monster forms do while a round is on
+const monFx = { revT: 0, buzzT: 0 };
+function updateMonsterForms(dt, t, h) {
+  if (GM.mode !== 'btm' || GM.phase !== 'play') return;
+  if (meMonsterOn && GM.form === 'chainsaw' && GM.t >= 12) { // REV: a speed burst every 10 s
+    monFx.revT += dt; const rev = monFx.revT % 10 < 2; moveBoost = rev ? 1.8 : 1.35;
+    if ((monFx.buzzT -= dt) <= 0) { monFx.buzzT = rev ? 0.12 : 0.3; sfx(rev ? 140 : 90, 70, 0.2, 'sawtooth', rev ? 0.12 : 0.05); }
+  }
+  for (const [id, r] of remotes) {
+    if (id !== GM.monster) continue;
+    const moving = r.prevMon ? r.c.h.distanceTo(r.prevMon) / Math.max(dt, 1e-3) : 1; (r.prevMon ||= new THREE.Vector3()).copy(r.c.h);
+    if (GM.form === 'shadow') r.g.root.visible = moving > 0.6 || Math.random() < 0.03; // almost invisible when it stands still
+    if (GM.form === 'chainsaw' && (r.buzzT = (r.buzzT || 0) - dt) <= 0) { r.buzzT = 0.22; const d = h.distanceTo(r.c.h); if (d < 30) sfx(80 + Math.random() * 20, 70, 0.2, 'sawtooth', 0.2 * (1 - d / 30)); } // you HEAR it coming
+  }
+}
 function jumpScare() {
   gmLocal.scareT = 0.9; scare.visible = true;
   sfx(180, 60, 0.9, 'sawtooth', 0.45); sfx(900, 200, 0.6, 'square', 0.25); sfx(60, 30, 1, 'sawtooth', 0.35);
@@ -3219,13 +3258,14 @@ function updateGM(dt, t) {
       if (!r.glow) { r.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(r.glow); }
       r.glow.visible = iAmMonster && target; if (r.glow.visible) r.glow.position.copy(r.c.h).add(_gw.set(0, 0.35, 0));
       if (iAmMonster && target && GM.t >= 12 && gmLocal.tagCd <= 0) {
-        const c = r.c.h; if (h.distanceTo(c) < 0.6 || myPose.l.distanceTo(c) < 0.45 || myPose.r.distanceTo(c) < 0.45) { gmLocal.tagCd = 1; gmReport('gmtag', { id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); }
+        const c = r.c.h, k = tagMul(); if (h.distanceTo(c) < 0.6 * k || myPose.l.distanceTo(c) < 0.45 * k || myPose.r.distanceTo(c) < 0.45 * k) { gmLocal.tagCd = 1; gmReport('gmtag', { id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); }
       }
       if (!iAmMonster && id === GM.monster && GM.parts.includes(myId) && !GM.caught.includes(myId)) {
         const d = h.distanceTo(r.c.h); if (d < 14 && (gmLocal.beatT -= dt) <= 0) { gmLocal.beatT = 0.3 + d / 14 * 1.2; sfx(60, 40, 0.12, 'sine', 0.3 * (1 - d / 14) + 0.08); sfx(55, 35, 0.1, 'sine', 0.2 * (1 - d / 14) + 0.05, 0.14); }
       }
     }
   } else for (const r of remotes.values()) if (r.glow) r.glow.visible = false;
+  updateMonsterForms(dt, t, h);
   if (gmLocal.scareT > 0) { gmLocal.scareT -= dt; scare.visible = gmLocal.scareT > 0; scare.position.z = -0.3 + Math.sin(t * 60) * 0.01; }
   if (GM.phase !== 'idle') drawGmHud(); else if (gmHudText) { gmHudText = ''; gmHudEl.style.display = 'none'; drawGmHud(); }
   gmPanel.m.visible = renderer.xr.isPresenting && !!gmHudText;
@@ -3253,6 +3293,7 @@ const BOTS = Array.from({ length: 5 }, (_, i) => {
 });
 const _bq2 = new THREE.Quaternion(), _bd2 = new THREE.Vector3();
 function botTo(b, p) { b.pos.copy(p); b.target.copy(p); b.ground = groundAt(p.x, p.z, 30); if (b.ground < -1e8) b.ground = 0; }
+function botBlocked(x, z, ground) { for (const b of solid) if (b.min.y < ground + 0.6 && b.max.y > ground + 0.75 && x > b.min.x - 0.2 && x < b.max.x + 0.2 && z > b.min.z - 0.2 && z < b.max.z + 0.2) return true; return false; }
 function updateBots(dt, t) {
   const btmOn = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play');
   for (const b of BOTS) {
@@ -3275,7 +3316,8 @@ function updateBots(dt, t) {
     }
     if (b.mode === 'wait' || b.mode === 'out') speed = 0;
     _bd2.set(b.target.x - b.pos.x, 0, b.target.z - b.pos.z); const dist = _bd2.length();
-    if (dist > 0.1 && speed > 0) { b.pos.addScaledVector(_bd2, Math.min(dist, speed * dt) / dist); b.yaw = Math.atan2(-_bd2.x, -_bd2.z); }
+    if (dist > 0.1 && speed > 0) { const st = Math.min(dist, speed * dt) / dist, nx = b.pos.x + _bd2.x * st, nz = b.pos.z + _bd2.z * st;
+      if (b.mode === 'lobby' && botBlocked(nx, nz, b.ground)) { b.t = 0; b.target.copy(b.pos); } else { b.pos.x = nx; b.pos.z = nz; b.yaw = Math.atan2(-_bd2.x, -_bd2.z); } }
     b.walk += ((dist > 0.15 && speed > 0 ? Math.min(1, speed / 3) : 0) - b.walk) * (1 - Math.exp(-6 * dt));
     // stand on whatever is below (step up small ledges), hop now and then
     const g = groundAt(b.pos.x, b.pos.z, b.ground + 0.7); if (g > -1e8) b.ground += (g - b.ground) * (1 - Math.exp(-12 * dt));
@@ -3294,13 +3336,76 @@ function updateBots(dt, t) {
     if (!b.glow) { b.glow = new THREE.Mesh(S(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b6b, transparent: true, opacity: 0.6, fog: false, depthTest: false })); scene.add(b.glow); }
     b.glow.visible = b.mode === 'btm' && GM.monster === myId; if (b.glow.visible) b.glow.position.copy(p.h).add(_bd2.set(0, 0.35, 0));
     // you (the monster) catch them by touching
-    if (b.mode === 'btm' && GM.monster === myId && GM.phase === 'play' && GM.t >= 12 && gmLocal.tagCd <= 0 && (myPose.h.distanceTo(p.h) < 0.65 || myPose.l.distanceTo(p.h) < 0.5 || myPose.r.distanceTo(p.h) < 0.5)) {
+    if (b.mode === 'btm' && GM.monster === myId && GM.phase === 'play' && GM.t >= 12 && gmLocal.tagCd <= 0 && (myPose.h.distanceTo(p.h) < 0.65 * tagMul() || myPose.l.distanceTo(p.h) < 0.5 * tagMul() || myPose.r.distanceTo(p.h) < 0.5 * tagMul())) {
       gmLocal.tagCd = 0.6; gmReport('gmtag', { id: b.id }); sfx(200, 60, 0.3, 'sawtooth', 0.3); burst(p.h, 0xff3b6b);
     }
   }
 }
 
-window.__boss = { BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= STORY CHAPTERS 3-5: THE BOSSES (Claude comes along) =================
+const SB = { active: 0, entries: [], cd: 0 };
+const sbIsDone = n => { try { return localStorage.getItem('darkbound-story-' + n) === 'done'; } catch (e) { return false; } };
+const SB_CH = {
+  3: { boss: 0, title: 'THE GLOOM WARDEN',
+    intro: ['Okay so... a big horned guy guards this arena. The Gloom... Garden? Warden. Warden.', 'He shoots rings of light. Jump over them! Or duck. Or both. Probably both.', 'When he gets dizzy, SLAP HIM. That\'s the plan. That\'s the whole plan.'],
+    win: ['YOU DID IT! The Warden got... warden-ed. Is that a word?', 'One down! I think there are more. I can feel it in my tail.'] },
+  4: { boss: 1, title: 'THE PRISM WITCH',
+    intro: ['The Prism Witch! She turns light into... pointy light.', 'Her bullets spin around. Because... reasons. Don\'t get dizzy. That\'s HER job.', 'Slap her when she wobbles. Gently? No. NOT gently.'],
+    win: ['Wow! The light feels way less pointy now.', 'One boss left. A big rusty one. Ew, rust.'] },
+  5: { boss: 2, title: 'THE RUST COLOSSUS',
+    intro: ['The Rust Colossus. He forgot how to stop. I forget stuff too! We have so much in common.', 'His bullet walls have gaps in them. Find the gaps!', 'Then slap the rust right off him!'],
+    win: ['YOU BEAT ALL THREE! The arena is so quiet now.', 'But the big door in the Hollow... I swear it just blinked again.', 'To be continued... probably. Maybe. I don\'t know how stories work.'] },
+};
+SB_CH[3].fights = ['gloom']; SB_CH[4].fights = ['bat']; SB_CH[5].fights = ['crab'];
+SB_CH[3].guards = 'Wait! A Gloomlet guard is in the way. Battle it first!'; SB_CH[4].guards = 'A Spark Bat guard! Beat it, then the Witch!'; SB_CH[5].guards = 'A Bolt Crab guard. Clicky. Beat it first!';
+SB_CH[5].win = ['YOU BEAT ALL THREE! The arena is so quiet now.', 'Too quiet. Wait... do you hear that? Something BIG.', 'Uh oh. Get ready...'];
+const KING = { id: 'king', name: 'THE HOLLOW KING', color: 0x7a2cff, style: 'king', hp: 2600, scale: 1.7, intro: 'The ruler of the dark. He wants to wake the Eye.', attacks: ['halo', 'twin', 'gate', 'prism', 'moths', 'grid', 'starfall'] };
+BOSSES.push(KING); // index 3 (after the arena statues were made, so it has no statue: story only)
+SB_CH[6] = { boss: 3, title: 'THE HOLLOW KING', fights: ['gloom', 'bat', 'crab'],
+  intro: ['Uh oh. Uh oh uh oh. Something HUGE is coming.', 'Everyone whispers about the Hollow King. He wants to wake up the Eye!', 'First his three guards. Then... him. I\'ll be right behind you. WAY behind you.'],
+  guards: 'Here come his guards. One at a time. Hopefully.',
+  win: ['YOU BEAT THE HOLLOW KING!!!', 'The Eye didn\'t wake up. It looked kind of... disappointed?', 'I\'m so proud of you. I think. Is this feeling pride? Or am I hungry?', 'THE END... for now.'] };
+const nextBossChapter = () => [3, 4, 5, 6].find(n => !sbIsDone(n)) || 0;
+function runGuardFights(n, list) {
+  if (SB.active !== n) return;
+  if (!list.length) { say(['That\'s all the guards! Here comes the boss... act cool.'], () => { if (B.def || SB.active !== n) return; if (bossAuth()) startBoss(SB_CH[n].boss); else bsend({ t: 'bsum', b: SB_CH[n].boss }); }); return; }
+  const [first, ...rest] = list;
+  startBattle(first, null);
+  BT.story = { next: () => { say([rest.length ? 'Guard down! Next one!' : 'Guard down!'], () => runGuardFights(n, rest)); }, retry: () => runGuardFights(n, list) };
+}
+function chainTo(fn, label) { // short pause, then off to the next chapter
+  setTimeout(() => banner('GET READY...', 'NEXT: ' + label, 3, '#ffb070'), 3500);
+  setTimeout(() => { sfx(200, 1200, 0.6, 'sine', 0.2); fn(); }, 7000);
+}
+function refreshSbEntries() { // portals to the next boss chapter: in the Lantern Camp and where you land in the Hollow
+  for (const e of SB.entries) scene.remove(e); SB.entries = [];
+  const n = nextBossChapter(); if (!n || !B3.done) return;
+  SB.entries.push(storyPortal(B3X + 3.5, 1.4, B3Z + 6, 'CHAPTER ' + n, SB_CH[n].title, 0xff8a3d));
+  SB.entries.push(storyPortal(SX + 5.4, 1.4, SZ - 1.5, 'CHAPTER ' + n, SB_CH[n].title, 0xff8a3d));
+}
+refreshSbEntries();
+function startBossChapter(n) {
+  if (!n) return;
+  if (B.def) { banner('THE ARENA IS BUSY', 'SOMEONE IS FIGHTING A BOSS. TRY AGAIN SOON', 2.5, '#ff8a3d'); return; }
+  SB.active = n; teleport(AX - 7, 0.3, AZ + 6, -0.57);
+  bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null;
+  CL.pos.set(AX - 8.5, 1.2, AZ + 7.5); CL.goal.set(AX - 8.6, 1.2, AZ + 8.6);
+  banner('CHAPTER ' + n, SB_CH[n].title, 3, '#ff8a3d'); sfx(70, 40, 1.2, 'sawtooth', 0.2);
+  say([...SB_CH[n].intro, SB_CH[n].guards], () => runGuardFights(n, SB_CH[n].fights.slice()));
+}
+function storyBossWon() { // called when a boss is beaten
+  const n = SB.active; if (!n || B.def !== BOSSES[SB_CH[n].boss]) return; SB.active = 0;
+  try { localStorage.setItem('darkbound-story-' + n, 'done'); } catch (e) { }
+  setTimeout(() => say(SB_CH[n].win, () => { banner('CHAPTER ' + n + ' COMPLETE', n < 6 ? 'ON TO CHAPTER ' + (n + 1) + '!' : 'THE END... FOR NOW', 3.5, '#6dff9a'); addBananas(n === 6 ? 50 : 15, 'CHAPTER ' + n); refreshSbEntries();
+    if (n < 6) chainTo(() => startBossChapter(n + 1), 'CHAPTER ' + (n + 1)); else setTimeout(() => { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('THANKS FOR PLAYING THE STORY', 'MORE CHAPTERS SOMEDAY...', 4, '#ffb070'); }, 6000); }), 2500);
+}
+function updateSB(dt) {
+  SB.cd -= dt;
+  for (const e of SB.entries) { e.rotation.y += dt * 0.6; e.children[1].material.opacity = 0.35 + Math.sin(performance.now() / 300) * 0.15; if (SB.cd <= 0 && storyTouch(e.position, 1.0)) { SB.cd = 4; startBossChapter(nextBossChapter()); } }
+  if (SB.active && Math.hypot(myPose.h.x - AX, myPose.h.z - AZ) > 45) SB.active = 0; // you left the arena
+}
+
+window.__boss = { SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -3382,7 +3487,7 @@ renderer.setAnimationLoop(() => {
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
   updateWind(Math.hypot(vel.x, vel.y, vel.z));
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateSB(dt); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
