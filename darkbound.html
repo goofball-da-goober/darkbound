@@ -424,6 +424,7 @@ function ensureAudio() {
   if (actx && actx.state === 'suspended') actx.resume();
 }
 addEventListener('pointerdown', ensureAudio);
+addEventListener('pointerdown', () => { if (typeof SET !== 'undefined' && SET.mic !== 'off' && !voice.stream && voice.state !== 'denied' && !renderer.xr.isPresenting) enableMic(); }, { once: true });
 let _sfxOut = null;
 function sfxOut() { if (!_sfxOut) { _sfxOut = actx.createGain(); _sfxOut.connect(actx.destination); } _sfxOut.gain.value = SET.sfxVol / 5; return _sfxOut; }
 function tap(strength) {
@@ -547,7 +548,7 @@ function updateDesktop(dt) {
   grounded = applyPushToVel(resolveBody());
 }
 
-renderer.xr.addEventListener('sessionstart', () => { ensureAudio(); enableMic(); respawn(); document.getElementById('hud').style.display = 'none'; });
+renderer.xr.addEventListener('sessionstart', () => { const ss = renderer.xr.getSession(); for (const ev of ['selectstart', 'squeezestart', 'select', 'squeeze']) ss?.addEventListener(ev, ensureAudio); ensureAudio(); enableMic(); respawn(); document.getElementById('hud').style.display = 'none'; });
 renderer.xr.addEventListener('sessionend', () => { camera.position.set(0, 1.6, 0); rig.quaternion.identity(); document.getElementById('hud').style.display = ''; });
 addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); thirdCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1043,6 +1044,7 @@ async function enableMic() {
   voice.state = 'asking'; drawBoard();
   try {
     voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    try { ensureAudio(); if (actx) { voice.meter = actx.createAnalyser(); voice.meter.fftSize = 256; voice.meterBuf = new Uint8Array(256); actx.createMediaStreamSource(voice.stream).connect(voice.meter); } } catch (e) { }
     voice.state = 'on'; setMuted(SET.mic !== 'open');
     for (const [pid, c] of [...voice.calls]) if (!c.sentAudio) { voice.calls.delete(pid); c.close(); } // re-call so they hear us
     for (const r of remotes.values()) if (r.pid) callPeer(r.pid);
@@ -1059,13 +1061,13 @@ function callPeer(pid) {
 }
 function wireCall(pid, c) {
   voice.calls.set(pid, c);
-  c.on('stream', s => attachVoice(pid, s));
+  c.on('stream', s => { c.gotAudio = s.getAudioTracks().length > 0; attachVoice(pid, s); });
   c.on('close', () => { if (voice.calls.get(pid) === c) { voice.calls.delete(pid); detachVoice(pid); } });
   c.on('error', () => { try { c.close(); } catch (e) { } });
 }
 function onIncomingCall(c) {
   const pid = c.peer, mine = voice.calls.get(pid);
-  if (mine && mine.outgoing && net.peer && net.peer.id < pid) { c.close(); return; } // both called at once: lower id's call wins
+  if (mine && mine.outgoing && mine.gotAudio && net.peer && net.peer.id < pid) { c.close(); return; } // both called at once: keep mine only if it already carries their voice
   if (mine) { voice.calls.delete(pid); mine.close(); }
   c.answer(voice.stream || undefined); c.sentAudio = !!voice.stream;
   wireCall(pid, c);
@@ -1075,7 +1077,7 @@ function closeAllVoice() { for (const pid of [...voice.calls.keys()]) dropVoice(
 function attachVoice(pid, stream) {
   ensureAudio(); if (!actx) return;
   detachVoice(pid);
-  const el = new Audio(); el.srcObject = stream; el.muted = true; el.play().catch(() => { }); // Chrome only feeds WebRTC audio to WebAudio if an element plays it
+  const el = new Audio(); el.srcObject = stream; el.muted = actx.state === 'running'; el.play().catch(() => { }); // Chrome only feeds WebRTC audio to WebAudio if an element plays it; it's also the backup speaker
   const src = actx.createMediaStreamSource(stream);
   const panner = actx.createPanner();
   panner.panningModel = 'HRTF'; panner.distanceModel = 'inverse'; panner.refDistance = 1.2; panner.maxDistance = 40; panner.rolloffFactor = 1.4;
@@ -1105,6 +1107,7 @@ function updateVoice() {
   for (const r of remotes.values()) {
     const v = r.pid && voices.get(r.pid);
     if (!v) { r.g.setMouth(0); continue; }
+    const backup = actx.state !== 'running'; if (v.el.muted === backup) { v.el.muted = !backup; if (backup) v.el.play().catch(() => { }); } // sound engine asleep: use the plain speaker
     const h = r.c.h;
     if (!setXYZ(v.panner, 'position', h.x, h.y, h.z)) v.panner.setPosition(h.x, h.y, h.z);
     v.an.getByteTimeDomainData(v.buf);
@@ -2928,7 +2931,7 @@ async function enterVR() {
   }
   vrStarting = false;
 }
-document.getElementById('vrGo').addEventListener('click', () => { ensureAudio(); enterVR(); });
+document.getElementById('vrGo').addEventListener('click', () => { ensureAudio(); if (SET.mic !== 'off') enableMic(); enterVR(); });
 if (navigator.xr) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => {
     if (!ok) return;                                   // a PC: keep the desktop preview and its instructions
@@ -2936,7 +2939,9 @@ if (navigator.xr) {
     document.getElementById('hud').style.display = 'none';
     document.querySelector('#VRButton')?.style.setProperty('display', 'none');
     vrStart.hidden = false;
-    if (isQuestApp) enterVR();                         // Meta: immersive apps start VR right after loading
+    if (isQuestApp) { // Meta: immersive apps start VR right after loading. Ask for the mic first (answered once, then remembered)
+      const go = () => enterVR(); if (SET.mic === 'off') go(); else Promise.race([enableMic(), new Promise(r => setTimeout(r, 8000))]).finally(go);
+    }
   }).catch(() => { });
   navigator.xr.addEventListener?.('sessiongranted', enterVR);
 }
@@ -2964,7 +2969,8 @@ function updateDbg(dt) {
     'head ' + (camera.position.y * PLAYER_SCALE).toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
     'fall ' + vel.y.toFixed(2) + '   space ' + (renderer.xr.getReferenceSpace() ? 'ok' : 'NONE'),
     'L ' + hs(L), 'R ' + hs(R),
-    'cam: click a stick   bananas ' + bananas,
+    (() => { let lvl = 0; if (voice.meter && !voice.muted) { voice.meter.getByteTimeDomainData(voice.meterBuf); let q = 0; for (const b of voice.meterBuf) q += ((b - 128) / 128) ** 2; lvl = Math.min(8, Math.round(Math.sqrt(q / 256) * 60)); }
+      return micLabel() + ' ' + '|'.repeat(lvl).padEnd(8, '.') + '  voices ' + voices.size + '/' + remotes.size + (actx && actx.state !== 'running' ? ' SND OFF' : ''); })(),
     dbg.errs.length ? 'ERR ' + dbg.errs[dbg.errs.length - 1] : 'no errors',
   ];
   const c = dbgCv.getContext('2d');
