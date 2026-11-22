@@ -62,7 +62,7 @@ const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
 const HIST = 6;           // frames of velocity history
 const MAX_STEP = 0.3;     // max body move per frame from hands (anti tracking-glitch)
-const PLAYER_SCALE = 0.62;  // gorilla-sized player, like Gorilla Tag: your real height shrinks so your gorilla stands on the ground
+const PLAYER_SCALE = 0.55;  // gorilla-sized player, like Gorilla Tag: your real height shrinks so your view sits low, down at gorilla height
 const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 4.4, 0, 6.6 + Math.random() * 0.9); // spread players out, clear of the pillars at x=±3.4
 
 // seeded rng so the map is always the same
@@ -581,18 +581,23 @@ function makeGorilla(color) {
   const body = new THREE.Group(); root.add(body);
   part(body, S(0.24, 24, 18), fur, null, [1.05, 1.1, 0.82]);                 // torso
   part(body, S(0.17), skinLight, [0, 0.0, -0.12], [1.05, 1.1, 0.62], 0.01); // chest
-  for (const s of [-1, 1]) part(body, S(0.11), fur, [s * 0.21, 0.15, 0]);   // shoulder
   // no legs (Gorilla Tag style). Body physics: the torso hangs under the neck with gravity, swings, and lands on things
   const bp = new THREE.Vector3(), bv = new THREE.Vector3(); let bInit = false;
   const _neck = new THREE.Vector3(), _rest = new THREE.Vector3(), _tilt = new THREE.Quaternion(), _yawQ = new THREE.Quaternion(), _bd = new THREE.Vector3(), _ft = new THREE.Vector3();
 
+  // arms hang from shoulders fixed to the head (not the swinging body), so they stay steady in your view
   const arms = [-1, 1].map(side => {
     const palm = toon(0x3b2a4d); palm.emissive.set(0x5ef2ff); palm.emissiveIntensity = 0;
-    return { side, palm, upper: limb(root, 0.072, 0.06, fur), elbow: part(root, S(0.064), fur), fore: limb(root, 0.062, 0.088, fur), hand: makeHand(root, side, palm, skinDark, fur) };
+    return { side, palm, shoulder: part(root, S(0.085), fur), upper: limb(root, 0.058, 0.05, fur), elbow: part(root, S(0.052), fur), fore: limb(root, 0.05, 0.072, fur), hand: makeHand(root, side, palm, skinDark, fur) };
   });
+  const ARM1 = 0.17, ARM2 = 0.19; // upper arm / forearm, matched to your real reach at gorilla size
+  let selfHidden = false;
 
   return {
     root, head, body,
+    // first person: hide your own body + shoulders (they'd block your view); arms and hands stay
+    setSelfView(fp) { selfHidden = fp; body.visible = !fp; for (const A of arms) A.shoulder.visible = !fp; },
+    get selfHidden() { return selfHidden; },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p, dt = 1 / 60) {
@@ -616,10 +621,12 @@ function makeGorilla(color) {
       for (const A of arms) {
         const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
         A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
-        _gsh.set(A.side * 0.21, 0.15, 0).applyAxisAngle(_up, yaw).add(body.position);
+        _gsh.set(A.side * 0.17, -0.26, 0.05).applyAxisAngle(_up, yaw).add(p.h);   // shoulder: beside and below your eyes
         _gwr.set(0, 0.008, 0.075).applyQuaternion(hq).add(hp);
-        _gbd.set(A.side * 0.7, -0.6, 0.5).applyAxisAngle(_up, yaw);
-        solveElbow(_gsh, _gwr, 0.3, 0.34, _gbd, _gel);
+        _gbd.set(A.side * 0.8, -0.55, 0.3).applyAxisAngle(_up, yaw);              // elbows bend out and down, gorilla style
+        const reach = _gsh.distanceTo(_gwr), k = Math.max(1, reach / ((ARM1 + ARM2) * 0.96)); // arms stretch instead of popping off
+        solveElbow(_gsh, _gwr, ARM1 * k, ARM2 * k, _gbd, _gel);
+        A.shoulder.position.copy(_gsh);
         stretch(A.upper, _gsh, _gel); A.elbow.position.copy(_gel); stretch(A.fore, _gel, _gwr);
       }
     },
@@ -670,13 +677,14 @@ function updateMyPose(t, dt) {
   } else { // knuckle-walk animation
     const spd = Math.min(1, Math.hypot(vel.x, vel.z) / 6), sw = Math.sin(t * 7) * spd;
     _q.setFromAxisAngle(_up, yaw);
-    myPose.l.set(-0.34, -0.72 + Math.max(0, sw) * 0.12, -0.28 + sw * 0.25).applyQuaternion(_q).add(myPose.h);
-    myPose.r.set(0.34, -0.72 + Math.max(0, -sw) * 0.12, -0.28 - sw * 0.25).applyQuaternion(_q).add(myPose.h);
+    myPose.l.set(-0.3, -0.64 + Math.max(0, sw) * 0.1, -0.22 + sw * 0.2).applyQuaternion(_q).add(myPose.h);
+    myPose.r.set(0.3, -0.64 + Math.max(0, -sw) * 0.1, -0.22 - sw * 0.2).applyQuaternion(_q).add(myPose.h);
     myPose.lq.copy(_q); myPose.rq.copy(_q);
     me.setTouch(false, false);
   }
   me.root.visible = !!(xr || thirdPerson);
   me.head.visible = !xr && thirdPerson > 0;
+  me.setSelfView(xr);
   me.update(myPose, dt);
 }
 // ================= DARK CAM (floating camcorder with a live screen) =================
@@ -795,11 +803,12 @@ function updateLiv(dt) {
 function renderFrom(cam, target) { // draw the scene from the camcorder, showing your own head too
   const rootV = me.root.visible, headV = me.head.visible, objV = livObj.visible, xrOn = renderer.xr.enabled;
   const hv = camHide.map(m => m.visible); for (const m of camHide) m.visible = false;
+  const selfV = me.selfHidden; me.setSelfView(false); // the camera films your whole gorilla
   me.root.visible = true; me.head.visible = true; livObj.visible = false;
   const asp = target ? target.width / target.height : innerWidth / innerHeight; if (cam.aspect !== asp) { cam.aspect = asp; cam.updateProjectionMatrix(); }
   const prevRT = renderer.getRenderTarget(); // in VR this is the headset's own framebuffer - must go back to it
   renderer.xr.enabled = false; renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(prevRT); renderer.xr.enabled = xrOn;
-  me.root.visible = rootV; me.head.visible = headV; livObj.visible = objV;
+  me.root.visible = rootV; me.head.visible = headV; livObj.visible = objV; me.setSelfView(selfV);
   camHide.forEach((m, i) => { m.visible = hv[i]; });
 }
 // the camcorder's little screen: 15 fps in VR (lighter on the Quest), 30 on a computer
