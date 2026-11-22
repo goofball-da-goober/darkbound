@@ -562,11 +562,17 @@ function makeGorilla(color) {
   const body = new THREE.Group(); root.add(body);
   part(body, S(0.24, 24, 18), fur, null, [1.05, 1.1, 0.82]);                 // torso
   part(body, S(0.17), skinLight, [0, 0.0, -0.12], [1.05, 1.1, 0.62], 0.01); // chest
-  for (const s of [-1, 1]) {
-    part(body, S(0.11), fur, [s * 0.21, 0.15, 0]);                           // shoulder
-    part(body, S(0.085), fur, [s * 0.12, -0.27, 0], [1, 1.2, 1]);            // leg
-    part(body, S(0.075), skin, [s * 0.13, -0.38, -0.05], [1.05, 0.55, 1.45]); // foot
-  }
+  for (const s of [-1, 1]) part(body, S(0.11), fur, [s * 0.21, 0.15, 0]);   // shoulder
+  // legs + feet live in world space so they can reach down and stand on the ground
+  const legs = [-1, 1].map(s => {
+    const thigh = limb(root, 0.085, 0.07, fur);
+    const foot = new THREE.Group(); root.add(foot);
+    part(foot, S(0.075), skin, [0, 0.02, -0.03], [1.05, 0.55, 1.45]);
+    return { s, thigh, foot, p: new THREE.Vector3(), init: false };
+  });
+  // body physics: the torso hangs under the neck with gravity, swings, and lands on things
+  const bp = new THREE.Vector3(), bv = new THREE.Vector3(); let bInit = false;
+  const _neck = new THREE.Vector3(), _rest = new THREE.Vector3(), _tilt = new THREE.Quaternion(), _yawQ = new THREE.Quaternion(), _bd = new THREE.Vector3(), _hip = new THREE.Vector3(), _ft = new THREE.Vector3(), _fd = new THREE.Vector3(0, -0.36, 0);
 
   const arms = [-1, 1].map(side => {
     const palm = toon(0x3b2a4d); palm.emissive.set(0x5ef2ff); palm.emissiveIntensity = 0;
@@ -577,10 +583,33 @@ function makeGorilla(color) {
     root, head, body,
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
-    update(p) {
+    update(p, dt = 1 / 60) {
       head.position.copy(p.h); head.quaternion.copy(p.q);
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
-      body.position.copy(p.h); body.position.y -= 0.42; body.rotation.set(0, yaw, 0);
+      // --- body gravity ---
+      _neck.copy(p.h); _neck.y -= 0.17;
+      _rest.copy(_neck); _rest.y -= 0.25;
+      if (!bInit || bp.distanceTo(_neck) > 2) { bp.copy(_rest); bv.set(0, 0, 0); bInit = true; }  // teleports / respawns
+      bv.y -= G * dt;                                                   // gravity pulls the body down
+      bv.addScaledVector(_bd.copy(_rest).sub(bp), 90 * dt);             // springy hang under the neck
+      bv.multiplyScalar(Math.exp(-7 * dt));
+      bp.addScaledVector(bv, dt);
+      _bd.copy(bp).sub(_neck); const L = _bd.length();                  // stay attached to the neck
+      if (L > 0.32) bp.copy(_neck).addScaledVector(_bd, 0.32 / L);
+      else if (L < 0.16) bp.copy(_neck).addScaledVector(_bd.lengthSq() > 1e-8 ? _bd : _bd.set(0, -1, 0), 0.16 / Math.max(L, 1e-4));
+      _ft.copy(bp); if (pushOut(bp, 0.2)) { _ft.sub(bp).normalize(); const vn = bv.dot(_ft); if (vn > 0) bv.addScaledVector(_ft, -vn); } // land on the ground
+      _bd.copy(_neck).sub(bp).normalize();                              // lean the torso along the hang
+      _yawQ.setFromAxisAngle(_up, yaw); _tilt.setFromUnitVectors(_up, _bd);
+      body.position.copy(bp); body.quaternion.copy(_tilt).multiply(_yawQ);
+      // --- legs reach down and plant on the ground ---
+      for (const g of legs) {
+        _hip.set(g.s * 0.12, -0.2, 0).applyQuaternion(body.quaternion).add(bp);
+        if (sweep(_hip, _fd, 0.05, _ft)) { _ft.y -= 0.05; } else { _ft.copy(_hip); _ft.y -= 0.3; } // planted, or dangling
+        if (!g.init) { g.p.copy(_ft); g.init = true; }
+        g.p.lerp(_ft, 1 - Math.exp(-25 * dt));
+        stretch(g.thigh, _hip, g.p);
+        g.foot.position.copy(g.p); g.foot.quaternion.copy(_yawQ);
+      }
       for (const A of arms) {
         const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
         A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
@@ -617,7 +646,7 @@ function updateRemotes(dt) {
     if (now - r.seen > 6000) { removeRemote(id); continue; }
     const c = r.c, t = r.t;
     c.h.lerp(t.h, k); c.q.slerp(t.q, k); c.l.lerp(t.l, k); c.lq.slerp(t.lq, k); c.r.lerp(t.r, k); c.rq.slerp(t.rq, k);
-    r.g.update(c); updateRemoteCam(r, dt);
+    r.g.update(c, dt); updateRemoteCam(r, dt);
   }
 }
 
@@ -626,7 +655,7 @@ const me = makeGorilla(MY_COLOR);
 const myPose = mkPose();
 let thirdPerson = 0; // 0 first-person, 1 behind, 2 front (selfie)
 const thirdCam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
-function updateMyPose(t) {
+function updateMyPose(t, dt) {
   headWorld(myPose.h); camera.getWorldQuaternion(myPose.q);
   _e.setFromQuaternion(myPose.q, 'YXZ'); const yaw = _e.y;
   const xr = renderer.xr.isPresenting;
@@ -645,7 +674,7 @@ function updateMyPose(t) {
   }
   me.root.visible = !!(xr || thirdPerson);
   me.head.visible = !xr && thirdPerson > 0;
-  me.update(myPose);
+  me.update(myPose, dt);
 }
 // ================= LIV-STYLE CAMERA (floating camcorder with a live screen) =================
 function makeCamcorder() {
@@ -955,7 +984,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t); updateRemotes(dt); updateVoice(); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
