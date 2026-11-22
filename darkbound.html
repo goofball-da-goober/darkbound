@@ -7,8 +7,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#07040f">
 <link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap">
 <style>
-  html,body{margin:0;height:100%;background:#07040f;overflow:hidden;font-family:ui-monospace,Consolas,monospace;color:#e8dcff}
+  html,body{margin:0;height:100%;background:#07040f;overflow:hidden;font-family:"Lilita One",system-ui,sans-serif;color:#e8dcff}
   #hud{position:fixed;left:16px;top:16px;max-width:380px;background:rgba(10,5,25,.85);border:2px solid #9b5cff;padding:12px 14px;font-size:13px;line-height:1.55;pointer-events:none}
   #hud h1{margin:0 0 4px;font-size:20px;color:#5ef2ff;letter-spacing:4px}
   #hud .sub{color:#b9a3e8;margin-bottom:8px}
@@ -17,7 +19,7 @@
   #vrStart{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:radial-gradient(circle at 50% 40%,#24124a,#07040f 70%);padding:24px}
   #vrStart[hidden]{display:none}
   #vrStart img{width:min(560px,80vw);border-radius:10px;border:2px solid #9b5cff;box-shadow:0 0 40px #9b5cff66}
-  #vrStart button{font:bold 42px/1 ui-monospace,Consolas,monospace;letter-spacing:6px;color:#07121a;background:#5ef2ff;border:0;border-radius:14px;padding:28px 64px;cursor:pointer;box-shadow:0 0 30px #5ef2ff88}
+  #vrStart button{font:bold 42px/1 "Lilita One",system-ui,sans-serif;letter-spacing:6px;color:#07121a;background:#5ef2ff;border:0;border-radius:14px;padding:28px 64px;cursor:pointer;box-shadow:0 0 30px #5ef2ff88}
   #vrStart button:focus-visible{outline:4px solid #ffd447;outline-offset:4px}
   #vrStart p{color:#b9a3e8;font-size:20px;margin:0}
 </style>
@@ -56,6 +58,8 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// wait (briefly) for the game font so every sign is drawn with it
+try { await Promise.race([document.fonts.load('40px "Lilita One"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
 
 // ================= TUNING (Gorilla-style locomotion) =================
 const VERSION = 'ALPHA 0.2', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
@@ -103,42 +107,50 @@ const sun = new THREE.DirectionalLight(0xffc6f0, 1.0); sun.position.set(20, 40, 
 const riftLight = new THREE.PointLight(0x9ff6ff, 40, 45, 1.5); riftLight.position.set(0, 3, 0); scene.add(riftLight);
 
 // ================= WORLD BUILDING =================
-const COL = { stone: 0x2b2346, stoneHi: 0x3a2f5e, wall: 0x140b28, trunk: 0x3a1426, leaf: 0xa3123f, leaf2: 0xd11b55, gold: 0x4a3a0c, crystal: 0x1b4a5c, maze: 0x241a40 };
+const COL = { stone: 0x5a5272, stoneHi: 0x7a6f96, wall: 0x2e2747, trunk: 0x5b3a33, leaf: 0xc2364f, leaf2: 0xe86a6f, gold: 0xd9a441, crystal: 0x45b8c4, maze: 0x4a4466 };
 const EDGE = { cyan: 0x5ef2ff, pink: 0xff5c8a, gold: 0xffd447, violet: 0x9b5cff };
 const solid = []; // collision AABBs
-const buckets = new Map(), edgeBuckets = new Map();
+const buckets = new Map(), edgeBuckets = new Map(), inkGeos = [];
 const bucket = (m, k) => m.get(k) || m.set(k, []).get(k);
 
 // box with bottom at y, centered on x/z
 function addBox(x, y, z, sx, sy, sz, color, edge = EDGE.cyan, collide = true) {
   const g = new THREE.BoxGeometry(sx, sy, sz); g.translate(x, y + sy / 2, z);
   bucket(buckets, color).push(g);
-  if (edge != null) {
-    const e = new THREE.EdgesGeometry(new THREE.BoxGeometry(sx, sy, sz)); e.translate(x, y + sy / 2, z);
-    bucket(edgeBuckets, edge).push(e);
-  }
+  const o = new THREE.BoxGeometry(sx + 0.06, sy + 0.06, sz + 0.06); o.translate(x, y + sy / 2, z); inkGeos.push(o); // thick dark cartoon outline
   if (collide) solid.push({ min: new THREE.Vector3(x - sx / 2, y, z - sz / 2), max: new THREE.Vector3(x + sx / 2, y + sy, z + sz / 2) });
 }
 const worldGrad = (() => { const t = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
 function buildMeshes() {
   for (const [c, geos] of buckets)
-    scene.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshToonMaterial({ color: c, gradientMap: worldGrad, emissive: c, emissiveIntensity: .18 })));
-  for (const [c, geos] of edgeBuckets)
-    scene.add(new THREE.LineSegments(mergeGeometries(geos), new THREE.LineBasicMaterial({ color: c })));
+    scene.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshToonMaterial({ color: c, gradientMap: worldGrad, emissive: c, emissiveIntensity: .1 })));
+  scene.add(new THREE.Mesh(mergeGeometries(inkGeos), new THREE.MeshBasicMaterial({ color: 0x0c0818, side: THREE.BackSide })));
 }
 
 // --- ground: checkered dark field ---
 {
-  const cv = document.createElement('canvas'); cv.width = cv.height = 2;
-  const cx = cv.getContext('2d');
-  cx.fillStyle = '#1c1033'; cx.fillRect(0, 0, 2, 2);
-  cx.fillStyle = '#2c1955'; cx.fillRect(0, 0, 1, 1); cx.fillRect(1, 1, 1, 1);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const cx = cv.getContext('2d'); let sd = 7; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  cx.fillStyle = '#3a3657'; cx.fillRect(0, 0, 256, 256);                     // dusky stone-moss ground
+  for (let i = 0; i < 90; i++) { cx.fillStyle = R() < 0.5 ? 'rgba(30,26,52,0.35)' : 'rgba(80,92,110,0.25)'; cx.beginPath(); cx.ellipse(R() * 256, R() * 256, 8 + R() * 26, 6 + R() * 18, R() * 3, 0, 7); cx.fill(); }
+  for (let i = 0; i < 900; i++) { cx.fillStyle = R() < 0.6 ? 'rgba(20,16,36,0.5)' : 'rgba(150,160,190,0.35)'; cx.fillRect(R() * 256, R() * 256, 1 + R() * 2, 1 + R() * 2); }
   const tex = new THREE.CanvasTexture(cv);
-  tex.magFilter = THREE.NearestFilter; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(60, 60); tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 4;
+  tex.repeat.set(14, 14); tex.colorSpace = THREE.SRGBColorSpace;
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshToonMaterial({ map: tex, gradientMap: worldGrad }));
   ground.rotation.x = -Math.PI / 2; scene.add(ground);
   solid.push({ min: new THREE.Vector3(-60, -3, -60), max: new THREE.Vector3(60, 0, 60) });
+}
+
+// --- sky: a painted gradient (deep night up top, warm glow at the horizon), wrapped around the world ---
+{
+  const cv = document.createElement('canvas'); cv.width = 16; cv.height = 512; const c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, 512); // top of the canvas = straight up, middle = horizon
+  g.addColorStop(0, '#0b0d2e'); g.addColorStop(0.3, '#2a1a52'); g.addColorStop(0.44, '#6a2f6a'); g.addColorStop(0.5, '#c0566a'); g.addColorStop(0.53, '#3a2048'); g.addColorStop(1, '#120c22');
+  c.fillStyle = g; c.fillRect(0, 0, 16, 512);
+  const tex = new THREE.CanvasTexture(cv); tex.mapping = THREE.EquirectangularReflectionMapping; tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
+  scene.fog.color.set(0x2a1a3c); // far things fade into the horizon colour
 }
 
 // --- spawn plaza + the Rift ---
@@ -333,7 +345,7 @@ const floaters = new THREE.Group(); scene.add(floaters);
   const cols = [EDGE.cyan, EDGE.pink, EDGE.violet, EDGE.gold];
   for (let i = 0; i < 40; i++) {
     const sz = rr(2, 8), a = rnd() * 6.283, r = rr(90, 170);
-    const m = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(sz, sz, sz)), new THREE.LineBasicMaterial({ color: cols[i % 4], fog: false }));
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(sz * 0.6, 0), new THREE.MeshToonMaterial({ color: [0x4a3f63, 0x5a4a6e, 0x3d3555, 0x6a5276][i % 4], gradientMap: worldGrad, flatShading: true, fog: false })); // floating rocks
     m.position.set(Math.cos(a) * r, rr(10, 80), Math.sin(a) * r);
     m.rotation.set(rnd() * 3, rnd() * 3, 0); m.userData.spin = rr(-.3, .3);
     floaters.add(m);
@@ -631,7 +643,7 @@ function drawBoard() {
   const c = netCv.getContext('2d');
   c.clearRect(0, 0, 1024, 128); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 1024, 128);
   c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 1018, 122);
-  c.fillStyle = '#e8dcff'; c.font = 'bold 34px monospace'; c.textAlign = 'center'; c.fillText(txt, 512, 80, 1000);
+  c.fillStyle = '#e8dcff'; c.font = '34px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText(txt, 512, 80, 1000);
   netTex.needsUpdate = true;
   document.getElementById('net').textContent = `room "${ROOM}" — ${remotes.size + 1} player(s) — ${net.status} — ${typeof voice === 'undefined' ? 'mic off' : micLabel().toLowerCase()}`;
 }
@@ -725,7 +737,7 @@ function makeGorilla(color) {
       tagName = n || '';
       if (!tag) { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tag = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.09), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })); tag.userData.cv = cv; root.add(tag); }
       const cx = tag.userData.cv.getContext('2d'); cx.clearRect(0, 0, 256, 64);
-      if (tagName) { cx.fillStyle = 'rgba(10,5,25,0.75)'; cx.fillRect(0, 8, 256, 48); cx.fillStyle = '#fff'; cx.font = 'bold 34px monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(tagName, 128, 33); }
+      if (tagName) { cx.fillStyle = 'rgba(10,5,25,0.75)'; cx.fillRect(0, 8, 256, 48); cx.fillStyle = '#fff'; cx.font = '34px "Lilita One", system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(tagName, 128, 33); }
       tag.material.map.needsUpdate = true; tag.visible = !!tagName && !selfHidden;
     },
     setRobot(glowHex) { // robot gorilla: chunky faceted plating + visor + antenna + bolts + glowing core
@@ -899,7 +911,7 @@ livObj.scale.setScalar(1.4); // bigger, easier to spot and grab
 }
 // "DARK CAM" tag floating above it so you can find it
 const livTagCv = document.createElement('canvas'); livTagCv.width = 256; livTagCv.height = 64;
-{ const c = livTagCv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 256, 64); c.strokeStyle = '#9b5cff'; c.lineWidth = 5; c.strokeRect(3, 3, 250, 58); c.fillStyle = '#5ef2ff'; c.font = 'bold 34px monospace'; c.textAlign = 'center'; c.fillText('DARK CAM', 128, 44); }
+{ const c = livTagCv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 256, 64); c.strokeStyle = '#9b5cff'; c.lineWidth = 5; c.strokeRect(3, 3, 250, 58); c.fillStyle = '#5ef2ff'; c.font = '34px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText('DARK CAM', 128, 44); }
 const livTagTex = new THREE.CanvasTexture(livTagCv); livTagTex.colorSpace = THREE.SRGBColorSpace;
 const livTag = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.04), new THREE.MeshBasicMaterial({ map: livTagTex, transparent: true }));
 livTag.position.set(0, 0.1, 0); livObj.add(livTag);
@@ -913,7 +925,7 @@ function drawLivHud() {
   c.clearRect(0, 0, 256, 144);
   c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = 3;
   for (const [x, y, dx, dy] of [[8, 8, 1, 1], [248, 8, -1, 1], [8, 136, 1, -1], [248, 136, -1, -1]]) { c.beginPath(); c.moveTo(x, y + dy * 18); c.lineTo(x, y); c.lineTo(x + dx * 18, y); c.stroke(); }
-  c.font = 'bold 15px monospace'; c.textBaseline = 'top';
+  c.font = '15px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'top';
   if (s % 2 === 0) { c.fillStyle = '#ff3b6b'; c.beginPath(); c.arc(22, 23, 6, 0, 7); c.fill(); }
   c.fillStyle = '#ffffff'; c.fillText('REC', 32, 16);
   c.textAlign = 'right'; c.fillText(String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'), 240, 16);
@@ -1027,7 +1039,7 @@ function takePhoto(cam = livCam) {
     for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4); // flip
     c2.putImageData(img, 0, 0);
     const tag = 'DARKBOUND • ' + VERSION + (B.def ? ' • ' + B.def.name : '');
-    c2.font = 'bold 34px monospace'; const tw = c2.measureText(tag).width;
+    c2.font = '34px "Lilita One", system-ui, sans-serif'; const tw = c2.measureText(tag).width;
     c2.fillStyle = 'rgba(7,4,15,0.65)'; c2.fillRect(W - tw - 60, H - 78, tw + 40, 54);
     c2.fillStyle = '#5ef2ff'; c2.textBaseline = 'middle'; c2.fillText(tag, W - tw - 40, H - 51);
     cvs.toBlob(b => { if (!b) return; const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'darkbound-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, 'image/png');
@@ -1346,8 +1358,8 @@ function labelTex(lines, w = 512, h = 128) {
   return { cv, tex, draw(ls) {
     const c = cv.getContext('2d'); c.clearRect(0, 0, w, h); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, w, h);
     c.strokeStyle = ls[2] || '#ffd447'; c.lineWidth = 6; c.strokeRect(3, 3, w - 6, h - 6); c.textAlign = 'center';
-    c.fillStyle = '#ffffff'; c.font = 'bold 40px monospace'; c.fillText(ls[0], w / 2, h * 0.45);
-    c.fillStyle = ls[2] || '#ffd447'; c.font = 'bold 26px monospace'; c.fillText(ls[1] || '', w / 2, h * 0.82);
+    c.fillStyle = '#ffffff'; c.font = '40px "Lilita One", system-ui, sans-serif'; c.fillText(ls[0], w / 2, h * 0.45);
+    c.fillStyle = ls[2] || '#ffd447'; c.font = '26px "Lilita One", system-ui, sans-serif'; c.fillText(ls[1] || '', w / 2, h * 0.82);
     tex.needsUpdate = true;
   } };
 }
@@ -1370,7 +1382,7 @@ function drawPeds() {
 // arena signs
 for (const [x, z, ry] of [[AX, AZ - 11.3, Math.PI], [AX - 11.3, AZ, -Math.PI / 2]]) {
   const lab = labelTex(null, 1024, 256); lab.draw(['BOSS ARENA', 'TOUCH A STATUE TO SUMMON • ' + VERSION, '#ff5c8a']);
-  const c = lab.cv.getContext('2d'); c.font = 'bold 84px monospace'; // bigger title
+  const c = lab.cv.getContext('2d'); c.font = '84px "Lilita One", system-ui, sans-serif'; // bigger title
   c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.fillStyle = '#ffffff'; c.fillText('BOSS ARENA', 512, 125); lab.tex.needsUpdate = true;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true }));
   m.position.set(x, FY + 3, z); m.rotation.y = ry; scene.add(m);
@@ -1388,13 +1400,13 @@ function sfx(f0, f1, dur, type = 'sawtooth', vol = 0.2, delay = 0) {
 // ---------- HUD: banner + health (VR panels on your face, HTML on a computer) ----------
 const hudCss = document.createElement('style');
 hudCss.textContent = `#bossHud{position:fixed;left:50%;top:14px;transform:translateX(-50%);width:min(560px,92vw);text-align:center;pointer-events:none;z-index:5}
-#bossHud .bn{font:bold 20px ui-monospace,Consolas,monospace;letter-spacing:4px;color:#fff;text-shadow:0 0 12px var(--bc,#9b5cff)}
+#bossHud .bn{font:20px "Lilita One",system-ui,sans-serif;letter-spacing:4px;color:#fff;text-shadow:0 0 12px var(--bc,#9b5cff)}
 #bossHud .bar{height:12px;border:2px solid #fff;margin:6px 0;background:#2a1640}#bossHud .bar i{display:block;height:100%;background:var(--bc,#9b5cff)}
-#bossHud .me{font:bold 14px ui-monospace,Consolas,monospace;color:#ff5c8a}
-#banner{position:fixed;left:50%;top:32%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:6;font:bold 40px ui-monospace,Consolas,monospace;letter-spacing:6px;color:#fff;text-shadow:0 0 18px #9b5cff;transition:opacity .3s}
+#bossHud .me{font:14px "Lilita One",system-ui,sans-serif;color:#ff5c8a}
+#banner{position:fixed;left:50%;top:32%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:6;font:40px "Lilita One",system-ui,sans-serif;letter-spacing:6px;color:#fff;text-shadow:0 0 18px #9b5cff;transition:opacity .3s}
 #banner small{display:block;font-size:16px;letter-spacing:2px;color:#ffd447;margin-top:8px}
 #hurt{position:fixed;inset:0;pointer-events:none;z-index:4;background:radial-gradient(circle,transparent 45%,#ff1a4a 100%);opacity:0}
-#camHud{position:fixed;inset:18px;pointer-events:none;z-index:3;border:0;font:bold 16px ui-monospace,Consolas,monospace;color:#fff}
+#camHud{position:fixed;inset:18px;pointer-events:none;z-index:3;border:0;font:16px "Lilita One",system-ui,sans-serif;color:#fff}
 #camHud:before{content:'';position:absolute;inset:0;border:3px solid rgba(255,255,255,.55);clip-path:polygon(0 0,60px 0,60px 3px,3px 3px,3px 60px,0 60px,0 100%,60px 100%,60px calc(100% - 3px),3px calc(100% - 3px),3px calc(100% - 60px),0 calc(100% - 60px),0 0,100% 0,100% 60px,calc(100% - 3px) 60px,calc(100% - 3px) 3px,calc(100% - 60px) 3px,calc(100% - 60px) 0,100% 0,100% 100%,calc(100% - 60px) 100%,calc(100% - 60px) calc(100% - 3px),calc(100% - 3px) calc(100% - 3px),calc(100% - 3px) calc(100% - 60px),100% calc(100% - 60px))}
 #camHud span{position:absolute;left:16px;top:14px}#camHud span:before{content:'●';color:#ff3b6b;margin-right:6px;animation:recb 1.2s steps(1) infinite}
 #camHud em{position:absolute;left:16px;bottom:14px;font-style:normal;color:#5ef2ff}
@@ -1422,8 +1434,8 @@ function banner(text, sub = '', secs = 3, color = '#9b5cff') {
   const c = vrBanner.cv.getContext('2d'); c.clearRect(0, 0, 1024, 256);
   c.fillStyle = 'rgba(7,4,15,0.75)'; c.fillRect(0, 0, 1024, sub ? 256 : 150);
   c.strokeStyle = color; c.lineWidth = 6; c.strokeRect(3, 3, 1018, (sub ? 256 : 150) - 6);
-  c.textAlign = 'center'; c.fillStyle = '#ffffff'; c.font = 'bold 72px monospace'; c.fillText(text, 512, 100, 990);
-  if (sub) { c.fillStyle = '#ffd447'; c.font = 'bold 38px monospace'; c.fillText(sub, 512, 200, 990); }
+  c.textAlign = 'center'; c.fillStyle = '#ffffff'; c.font = '72px "Lilita One", system-ui, sans-serif'; c.fillText(text, 512, 100, 990);
+  if (sub) { c.fillStyle = '#ffd447'; c.font = '38px "Lilita One", system-ui, sans-serif'; c.fillText(sub, 512, 200, 990); }
   vrBanner.tex.needsUpdate = true;
 }
 let statT = 0;
@@ -1445,7 +1457,7 @@ function updateHud(dt) {
   bossHudEl.querySelector('.me').textContent = 'YOU ' + '♥'.repeat(Math.ceil(P.hp / 3)) + '  ' + P.hp + '/' + P.max + (B.phase === 'stag' ? '   — IT\'S DIZZY: HIT IT! (E)' : '');
   const c = vrStat.cv.getContext('2d'); c.clearRect(0, 0, 512, 102);
   c.fillStyle = 'rgba(7,4,15,0.7)'; c.fillRect(0, 0, 512, 102);
-  c.fillStyle = '#ffffff'; c.font = 'bold 26px monospace'; c.textAlign = 'left'; c.fillText(B.def.name, 12, 30);
+  c.fillStyle = '#ffffff'; c.font = '26px "Lilita One", system-ui, sans-serif'; c.textAlign = 'left'; c.fillText(B.def.name, 12, 30);
   c.fillStyle = '#2a1640'; c.fillRect(12, 40, 488, 16); c.fillStyle = col; c.fillRect(12, 40, 488 * f, 16);
   c.fillStyle = '#ff5c8a'; c.fillText('YOU ' + P.hp + '/' + P.max + (B.phase === 'stag' ? '  SLAP IT!' : ''), 12, 90);
   vrStat.tex.needsUpdate = true;
@@ -1784,11 +1796,11 @@ const SPEC = { idx: 0, cam: new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 400), 
 if (SPECTATE) {
   document.getElementById('hud').style.display = 'none';
   const css = document.createElement('style');
-  css.textContent = `#spec{position:fixed;inset:0;pointer-events:none;z-index:7;font:bold 15px ui-monospace,Consolas,monospace;color:#fff}
+  css.textContent = `#spec{position:fixed;inset:0;pointer-events:none;z-index:7;font:15px "Lilita One",system-ui,sans-serif;color:#fff}
 #spec .top{position:absolute;left:16px;top:14px;background:rgba(7,4,15,.7);border:2px solid #9b5cff;padding:8px 12px;border-radius:6px}
 #spec .top b{color:#5ef2ff}#spec .top i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-left:6px}
 #spec .bar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:auto}
-#spec button{font:bold 15px ui-monospace,Consolas,monospace;color:#07121a;background:#5ef2ff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+#spec button{font:15px "Lilita One",system-ui,sans-serif;color:#07121a;background:#5ef2ff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
 #spec button.rec{background:#ff3b6b;color:#fff}#spec button:focus-visible{outline:3px solid #ffd447;outline-offset:2px}
 #spec .recdot{position:absolute;right:18px;top:16px;color:#ff3b6b;display:none}#spec.recording .recdot{display:block}`;
   document.head.appendChild(css);
@@ -1923,8 +1935,8 @@ function drawBubble(text) {
   c.fillStyle = 'rgba(255,248,238,0.96)'; c.strokeStyle = col; c.lineWidth = 10;
   c.beginPath(); c.roundRect(10, 10, 1004, 320, 40); c.fill(); c.stroke();
   c.beginPath(); c.moveTo(470, 326); c.lineTo(512, 376); c.lineTo(554, 326); c.closePath(); c.fill();
-  c.textBaseline = 'top'; c.fillStyle = col; c.font = 'bold 34px monospace'; c.fillText(STORY.spkName || 'CLAUDE', 42, 26);
-  c.fillStyle = '#2a1640'; c.font = 'bold 44px monospace';
+  c.textBaseline = 'top'; c.fillStyle = col; c.font = '34px "Lilita One", system-ui, sans-serif'; c.fillText(STORY.spkName || 'CLAUDE', 42, 26);
+  c.fillStyle = '#2a1640'; c.font = '44px "Lilita One", system-ui, sans-serif';
   const words = text.split(' '); let line = '', y = 72;
   for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > 940) { c.fillText(line, 42, y); y += 58; line = w; } else line = t; }
   c.fillText(line, 42, y); bubTex.needsUpdate = true;
@@ -1960,7 +1972,7 @@ function makePortal() {
 // fountain sign in the lobby
 {
   const lab = labelTex(null, 1024, 256); lab.draw(['JUMP IN THE RIFT', 'STORY MODE • MEET CLAUDE', '#ffb070']);
-  const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = 'bold 74px monospace'; c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.fillText('JUMP IN THE RIFT', 512, 120); lab.tex.needsUpdate = true;
+  const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '74px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.fillText('JUMP IN THE RIFT', 512, 120); lab.tex.needsUpdate = true;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.5, 2.45); scene.add(m);
 }
 // dialogue
@@ -1991,7 +2003,7 @@ function storyTouch(p, r) { return myPose.h.distanceTo(p) < r || myPose.l.distan
 let _clLook = new THREE.Vector3();
 // Claude is easily confused: little ? marks pop up, the head tilts, the eyes wander off
 const qCv = document.createElement('canvas'); qCv.width = qCv.height = 64;
-{ const c = qCv.getContext('2d'); c.font = 'bold 56px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('?', 32, 34); c.fillStyle = '#ffd447'; c.fillText('?', 32, 34); }
+{ const c = qCv.getContext('2d'); c.font = '56px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('?', 32, 34); c.fillStyle = '#ffd447'; c.fillText('?', 32, 34); }
 const qTex = new THREE.CanvasTexture(qCv); qTex.colorSpace = THREE.SRGBColorSpace;
 const qMarks = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ map: qTex, transparent: true, depthWrite: false })); m.visible = false; scene.add(m); return { m, t: 0 }; });
 const confused = { qT: 2, glanceT: 0, glanceNext: 3, glance: new THREE.Vector3() };
@@ -2406,7 +2418,7 @@ function updateCamp(dt, t) {
 // ---------- bananas (the new money) ----------
 let bananas = 0; try { bananas = +localStorage.getItem('darkbound-bananas') || 0; } catch (e) { }
 const bananaEl = document.createElement('div'); bananaEl.id = 'bananas';
-bananaEl.style.cssText = 'position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:14px;z-index:5;font:bold 18px ui-monospace,Consolas,monospace;color:#ffd447;background:rgba(10,5,25,.8);border:2px solid #ffd447;border-radius:8px;padding:4px 10px;pointer-events:none';
+bananaEl.style.cssText = 'position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:14px;z-index:5;font:18px "Lilita One",system-ui,sans-serif;color:#ffd447;background:rgba(10,5,25,.8);border:2px solid #ffd447;border-radius:8px;padding:4px 10px;pointer-events:none';
 document.body.appendChild(bananaEl);
 function addBananas(n, why) {
   bananas += n; try { localStorage.setItem('darkbound-bananas', String(bananas)); } catch (e) { }
@@ -2454,7 +2466,7 @@ const hatStand = HATS.map((hat, i) => {
   sign.position.set(p.x, p.y + 1.15, p.z); sign.rotation.y = Math.PI; scene.add(sign);
   return { hat, show, lab, cd: 0, state: '' };
 });
-{ const lab = labelTex(null, 1024, 256); lab.draw(['HAT STAND', 'TOUCH A HAT • BUY WITH BANANAS', '#ffd447']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = 'bold 84px monospace'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('HAT STAND', 512, 125); lab.tex.needsUpdate = true;
+{ const lab = labelTex(null, 1024, 256); lab.draw(['HAT STAND', 'TOUCH A HAT • BUY WITH BANANAS', '#ffd447']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '84px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('HAT STAND', 512, 125); lab.tex.needsUpdate = true;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(-5.5, 2.75, 10.9); m.rotation.y = Math.PI; scene.add(m); }
 function drawHatStand() {
   for (const s of hatStand) {
@@ -2486,9 +2498,9 @@ addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; l
 {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 1024; const c = cv.getContext('2d');
   c.fillStyle = 'rgba(10,5,25,0.92)'; c.fillRect(0, 0, 1024, 1024); c.strokeStyle = '#6dff9a'; c.lineWidth = 10; c.strokeRect(5, 5, 1014, 1014);
-  c.fillStyle = '#6dff9a'; c.font = 'bold 76px monospace'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
-  c.fillStyle = '#ffd447'; c.font = 'bold 44px monospace'; c.fillText('ALPHA 0.2', 512, 165);
-  c.textAlign = 'left'; c.font = 'bold 36px monospace';
+  c.fillStyle = '#6dff9a'; c.font = '76px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
+  c.fillStyle = '#ffd447'; c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillText('ALPHA 0.2', 512, 165);
+  c.textAlign = 'left'; c.font = '36px "Lilita One", system-ui, sans-serif';
   ['⚔ DARK BATTLES: touch a roaming', '  monster to fight it, turn by turn', '  SLAP • TALK • SNACK • CHILL', '  then dodge in the battle box!', '', '🦀 NEW: Bolt Crab', '🍌 BANANAS: win battles, bosses', '  and story chapters', '🎩 HAT STAND: buy hats, everyone', '  sees them', '🌲 DARKWOOD portal (west): HORROR', '  + BTM monster modes!']
     .forEach((l, i) => { c.fillStyle = l.startsWith(' ') ? '#cbbcf0' : '#ffffff'; c.fillText(l, 60, 250 + i * 62); });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
@@ -2580,13 +2592,13 @@ function drawPanelText(p, lines, border) {
   lines.forEach(f => f(c, W, H)); p.tex.needsUpdate = true;
 }
 function bar(c, x, y, w, h, f, col) { c.fillStyle = '#2a1640'; c.fillRect(x, y, w, h); c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, f)), h); c.strokeStyle = '#fff'; c.lineWidth = 3; c.strokeRect(x, y, w, h); }
-function drawBtTop() { const d = BT.def; drawPanelText(btTop, [c => { c.font = 'bold 44px monospace'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(d.name, 20, 55); c.font = 'bold 28px monospace'; c.fillText('HP', 400, 40); bar(c, 450, 25, 240, 30, BT.ehp / BT.emax, d.color); c.fillText('CALM', 400, 82); bar(c, 490, 70, 200, 24, BT.calm / 100, '#6dff9a'); c.fillStyle = BT.calm >= 100 ? '#6dff9a' : '#cbbcf0'; c.fillText(BT.calm >= 100 ? 'READY TO CHILL!' : '', 720, 82); }], d.color); }
-function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = 'bold 40px monospace'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   🍌 ' + bananas, 610, 42); }], '#9b5cff'); }
+function drawBtTop() { const d = BT.def; drawPanelText(btTop, [c => { c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(d.name, 20, 55); c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText('HP', 400, 40); bar(c, 450, 25, 240, 30, BT.ehp / BT.emax, d.color); c.fillText('CALM', 400, 82); bar(c, 490, 70, 200, 24, BT.calm / 100, '#6dff9a'); c.fillStyle = BT.calm >= 100 ? '#6dff9a' : '#cbbcf0'; c.fillText(BT.calm >= 100 ? 'READY TO CHILL!' : '', 720, 82); }], d.color); }
+function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = '40px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   🍌 ' + bananas, 610, 42); }], '#9b5cff'); }
 function drawBtn(i, label, enabled = true) {
   const p = btBtns[i]; p.label = label; p.enabled = enabled && !!label;
-  drawPanelText(p, [c => { if (!label) return; c.fillStyle = p.hot ? '#ffd447' : enabled ? 'rgba(20,10,40,0.95)' : 'rgba(20,10,40,0.5)'; c.fillRect(0, 0, 256, 156); c.strokeStyle = enabled ? '#ffd447' : '#555'; c.lineWidth = 8; c.strokeRect(4, 4, 248, 148); c.fillStyle = p.hot ? '#1a0b2e' : enabled ? '#fff' : '#777'; c.textAlign = 'center'; c.textBaseline = 'middle'; const words = label.split(' '); c.font = 'bold ' + (label.length > 10 ? 30 : 44) + 'px monospace'; if (words.length > 1 && label.length > 10) { c.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 128, 58); c.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 128, 100); } else c.fillText(label, 128, 80); }]);
+  drawPanelText(p, [c => { if (!label) return; c.fillStyle = p.hot ? '#ffd447' : enabled ? 'rgba(20,10,40,0.95)' : 'rgba(20,10,40,0.5)'; c.fillRect(0, 0, 256, 156); c.strokeStyle = enabled ? '#ffd447' : '#555'; c.lineWidth = 8; c.strokeRect(4, 4, 248, 148); c.fillStyle = p.hot ? '#1a0b2e' : enabled ? '#fff' : '#777'; c.textAlign = 'center'; c.textBaseline = 'middle'; const words = label.split(' '); c.font = 'bold ' + (label.length > 10 ? 30 : 44) + 'px "Lilita One", system-ui, sans-serif'; if (words.length > 1 && label.length > 10) { c.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 128, 58); c.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 128, 100); } else c.fillText(label, 128, 80); }]);
 }
-function drawBtText(text) { drawPanelText(btText, [c => { c.fillStyle = '#fff'; c.font = 'bold 34px monospace'; c.textBaseline = 'top'; const words = ('› ' + text).split(' '); let line = '', y = 30; for (const w of words) { const t2 = line ? line + ' ' + w : w; if (c.measureText(t2).width > 460) { c.fillText(line, 24, y); y += 44; line = w; } else line = t2; } c.fillText(line, 24, y); }]); }
+function drawBtText(text) { drawPanelText(btText, [c => { c.fillStyle = '#fff'; c.font = '34px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'top'; const words = ('› ' + text).split(' '); let line = '', y = 30; for (const w of words) { const t2 = line ? line + ' ' + w : w; if (c.measureText(t2).width > 460) { c.fillText(line, 24, y); y += 44; line = w; } else line = t2; } c.fillText(line, 24, y); }]); }
 function btSay(msgs, then) { BT.msgs = msgs.slice(); BT.then = then || null; btNext(); }
 function btNext() { if (!BT.msgs.length) { BT.msg = ''; const f = BT.then; BT.then = null; if (f) f(); return; } BT.msg = BT.msgs.shift(); BT.shown = 0; BT.hold = 0; BT.phase = 'talking'; drawBtText(''); btText.m.visible = true; }
 function setMenu() {
@@ -2751,7 +2763,7 @@ function updateBattle(dt, t) {
 
 // ---------- monsters roaming the world (touch one to battle) ----------
 const exCv = document.createElement('canvas'); exCv.width = exCv.height = 64;
-{ const c = exCv.getContext('2d'); c.font = 'bold 58px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('!', 32, 34); c.fillStyle = '#ff5c8a'; c.fillText('!', 32, 34); }
+{ const c = exCv.getContext('2d'); c.font = '58px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('!', 32, 34); c.fillStyle = '#ff5c8a'; c.fillText('!', 32, 34); }
 const exTex = new THREE.CanvasTexture(exCv); exTex.colorSpace = THREE.SRGBColorSpace;
 const ROAM = [['gloom', -22, 28], ['gloom', -36, 34], ['bat', 20, -34], ['bat', -28, -36], ['crab', 12, 46], ['crab', 46, -42]].map(([type, x, z]) => {
   const model = ENEMIES[type].make(); if (model.root.parent !== scene) scene.add(model.root); model.root.visible = true;
@@ -2794,7 +2806,7 @@ part(comp, new THREE.BoxGeometry(1.08, 0.66, 0.06), toon(0x1b1530, 0.1), [0, 0.6
 const compCv = document.createElement('canvas'); compCv.width = 1024; compCv.height = 640;
 const compTex = new THREE.CanvasTexture(compCv); compTex.colorSpace = THREE.SRGBColorSpace;
 const compScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.625), new THREE.MeshBasicMaterial({ map: compTex })); compScreen.position.set(0, 0.62, -0.548); comp.add(compScreen);
-{ const lab = labelTex(null, 512, 96); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.9)'; c.fillRect(0, 0, 512, 96); c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 506, 90); c.fillStyle = '#5ef2ff'; c.font = 'bold 60px monospace'; c.textAlign = 'center'; c.fillText('COMPUTAH', 256, 70); lab.tex.needsUpdate = true;
+{ const lab = labelTex(null, 512, 96); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.9)'; c.fillRect(0, 0, 512, 96); c.strokeStyle = '#5ef2ff'; c.lineWidth = 6; c.strokeRect(3, 3, 506, 90); c.fillStyle = '#5ef2ff'; c.font = '60px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText('COMPUTAH', 256, 70); lab.tex.needsUpdate = true;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.13), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.04, -0.57); comp.add(m); }
 // keyboard: press the keys with your hands (VR), tap them (phone), or press T to type (PC)
 const kb = new THREE.Group(); kb.position.set(0, 0.012, -0.2); kb.rotation.x = -Math.PI / 2 + 0.12; comp.add(kb);
@@ -2804,7 +2816,7 @@ function makeKey(label, x, y, w) {
   const cv = document.createElement('canvas'); cv.width = w > 0.06 ? 160 : 72; cv.height = 72; const c = cv.getContext('2d');
   const special = label.length > 1, col = label.startsWith('OPT') ? '#ffd447' : special ? '#5ef2ff' : '#ffffff';
   c.fillStyle = '#1b1232'; c.fillRect(0, 0, cv.width, 72); c.strokeStyle = col; c.lineWidth = 4; c.strokeRect(2, 2, cv.width - 4, 68);
-  c.fillStyle = col; c.font = 'bold ' + (special ? 30 : 44) + 'px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = col; c.font = 'bold ' + (special ? 30 : 44) + 'px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText({ UP: '▲', DOWN: '▼', OPT1: 'OPT 1', OPT2: 'OPT 2', OPT3: 'OPT 3' }[label] || label, cv.width / 2, 38);
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const g = new THREE.Group(); g.position.set(x, y, 0); kb.add(g);
@@ -2893,29 +2905,29 @@ function compOpt(menu, o) {
 function drawComp() {
   const c = compCv.getContext('2d'), W = 1024, H = 640, menu = COMP_MENU[CP.sel];
   c.fillStyle = '#07040f'; c.fillRect(0, 0, W, H); c.strokeStyle = '#5ef2ff'; c.lineWidth = 8; c.strokeRect(4, 4, W - 8, H - 8);
-  c.fillStyle = '#5ef2ff'; c.fillRect(4, 4, W - 8, 56); c.fillStyle = '#07040f'; c.font = 'bold 28px monospace'; c.textBaseline = 'middle';
+  c.fillStyle = '#5ef2ff'; c.fillRect(4, 4, W - 8, 56); c.fillStyle = '#07040f'; c.font = '28px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'middle';
   c.fillText('COMPUTAH • ' + VERSION + '  ' + roomTag() + '  PLAYERS: ' + (remotes.size + 1), 20, 33);
-  COMP_MENU.forEach((m, i) => { const on = i === CP.sel; c.fillStyle = on ? '#ffd447' : '#8f80b8'; c.font = 'bold 34px monospace'; c.fillText((on ? '> ' : '  ') + m, 20, 105 + i * 52); });
+  COMP_MENU.forEach((m, i) => { const on = i === CP.sel; c.fillStyle = on ? '#ffd447' : '#8f80b8'; c.font = '34px "Lilita One", system-ui, sans-serif'; c.fillText((on ? '> ' : '  ') + m, 20, 105 + i * 52); });
   c.strokeStyle = '#2f2252'; c.lineWidth = 4; c.beginPath(); c.moveTo(300, 70); c.lineTo(300, 570); c.stroke();
-  const x = 325; let y = 100; const line = (t, col = '#ffffff', size = 30) => { c.fillStyle = col; c.font = 'bold ' + size + 'px monospace'; c.fillText(t, x, y); y += size + 16; };
-  const field = label => { line(label, '#cbbcf0', 26); c.fillStyle = '#1b1232'; c.fillRect(x, y - 18, 640, 56); c.strokeStyle = '#ffd447'; c.strokeRect(x, y - 18, 640, 56); c.fillStyle = '#ffd447'; c.font = 'bold 38px monospace'; c.fillText(CP.input + (Math.floor(performance.now() / 500) % 2 ? '_' : ''), x + 14, y + 10); y += 70; };
+  const x = 325; let y = 100; const line = (t, col = '#ffffff', size = 30) => { c.fillStyle = col; c.font = 'bold ' + size + 'px "Lilita One", system-ui, sans-serif'; c.fillText(t, x, y); y += size + 16; };
+  const field = label => { line(label, '#cbbcf0', 26); c.fillStyle = '#1b1232'; c.fillRect(x, y - 18, 640, 56); c.strokeStyle = '#ffd447'; c.strokeRect(x, y - 18, 640, 56); c.fillStyle = '#ffd447'; c.font = '38px "Lilita One", system-ui, sans-serif'; c.fillText(CP.input + (Math.floor(performance.now() / 500) % 2 ? '_' : ''), x + 14, y + 10); y += 70; };
   const choice = (opts, cur) => opts.forEach(([k, label], i) => line('OPT ' + (i + 1) + ': ' + label + (k === cur ? '  <<' : ''), k === cur ? '#6dff9a' : '#ffffff', 28));
   if (menu === 'ROOM') { line('YOU ARE IN: ' + roomTag(), '#5ef2ff'); line('PLAYERS HERE: ' + (remotes.size + 1) + '   ' + net.status.toUpperCase(), '#cbbcf0', 24); field('TYPE A ROOM CODE, THEN ENTER:'); line('OPT 1: JOIN A PUBLIC ROOM', '#ffffff', 26); line('OPT 2: MAKE A RANDOM CODE', '#ffffff', 26); line('SHARE THE CODE WITH FRIENDS!', '#6dff9a', 24); }
   if (menu === 'NAME') { line('YOUR NAME: ' + (SET.name || '(NONE)'), '#5ef2ff'); line('EVERYONE SEES IT OVER YOUR HEAD', '#cbbcf0', 24); field('TYPE A NAME (A-Z, 0-9), THEN ENTER:'); line('OPT 1: CLEAR MY NAME', '#ffffff', 26); }
   if (menu === 'COLOR') {
-    ['RED', 'GREEN', 'BLUE'].forEach((n, i) => { const on = CP.ch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = 'bold 30px monospace'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k <= CP.rgb[i] ? ['#ff3b3b', '#3bff6a', '#3b7bff'][i] : '#2a1640'; c.fillRect(x + 290 + k * 30, y - 16, 24, 32); } c.fillStyle = '#fff'; c.fillText(String(CP.rgb[i]), x + 600, y); y += 58; });
+    ['RED', 'GREEN', 'BLUE'].forEach((n, i) => { const on = CP.ch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k <= CP.rgb[i] ? ['#ff3b3b', '#3bff6a', '#3b7bff'][i] : '#2a1640'; c.fillRect(x + 290 + k * 30, y - 16, 24, 32); } c.fillStyle = '#fff'; c.fillText(String(CP.rgb[i]), x + 600, y); y += 58; });
     c.fillStyle = '#' + new THREE.Color(hexOf(CP.rgb)).getHexString(); c.fillRect(x, y, 200, 90); c.strokeStyle = '#fff'; c.strokeRect(x, y, 200, 90); y += 130;
     line('PICK RED/GREEN/BLUE, PRESS 0-9, THEN ENTER', '#cbbcf0', 24);
   }
   if (menu === 'TURN') { line('HOW THE RIGHT STICK TURNS YOU', '#5ef2ff', 28); choice([['snap30', 'SNAP 30°'], ['snap45', 'SNAP 45°'], ['smooth', 'SMOOTH']], SET.turn); }
   if (menu === 'MIC') { line('VOICE CHAT', '#5ef2ff', 28); choice([['open', 'OPEN MIC (X = MUTE)'], ['ptt', 'PUSH TO TALK (HOLD X)'], ['off', 'MUTED']], SET.mic); }
-  if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS'].forEach((n, i) => { const v = i ? SET.sfxVol : SET.voiceVol, on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = 'bold 30px monospace'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
+  if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS'].forEach((n, i) => { const v = i ? SET.sfxVol : SET.voiceVol, on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
   if (menu === 'SAVE CODE') { line('YOUR SAVE CODE:', '#cbbcf0', 26); line(makeSaveCode(), '#ffd447', 54); line('TYPE IT ON YOUR OTHER DEVICE TO', '#cbbcf0', 24); line('BRING YOUR BANANAS, HATS, BOSSES & STORY', '#cbbcf0', 24); field('GOT A CODE? TYPE IT, THEN ENTER:'); }
   if (menu === 'STATS') { const wins = (() => { try { return +localStorage.getItem('darkbound-wins') || 0; } catch (e) { return 0; } })(), mins = Math.floor(((() => { try { return +localStorage.getItem('darkbound-time') || 0; } catch (e) { return 0; } })() + CP.playT) / 60);
     [['DEVICE', DEVICE_NAME], ['BANANAS', bananas], ['BATTLES WON', wins], ['BOSSES BEATEN', defeated.size + ' / 3'], ['STORY', [isDone('darkbound-story-1') && '1', isDone('darkbound-story-2') && '2', isDone('darkbound-story-25') && '2.5'].filter(Boolean).join(', ') || 'NOT STARTED'], ['HATS', hatSave.owned.length + ' / ' + HATS.length], ['PLAY TIME', mins + ' MIN']].forEach(([k, v]) => line(k + ': ' + v, '#ffffff', 28)); }
   if (menu === 'CREDITS') { line('DARKBOUND', '#5ef2ff', 44); line('A GORILLA VR GAME', '#cbbcf0', 26); line('IDEAS, STORY, BOSSES & LORE: THE CREATOR', '#ffffff', 24); line('CODE HELP: CLAUDE', '#ffffff', 24); line('THE EYE WAKES UP IN v2.5', '#ff5c8a', 24); line('THANKS FOR PLAYING!', '#6dff9a', 28); }
-  if (CP.msg) { c.fillStyle = '#6dff9a'; c.font = 'bold 28px monospace'; c.fillText(CP.msg, 325, 560); }
-  c.fillStyle = '#8f80b8'; c.font = 'bold 22px monospace';
+  if (CP.msg) { c.fillStyle = '#6dff9a'; c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText(CP.msg, 325, 560); }
+  c.fillStyle = '#8f80b8'; c.font = '22px "Lilita One", system-ui, sans-serif';
   c.fillText(DEVICE === 'pc' ? (CP.typing ? 'TYPING! ARROWS: MENU  , . / : OPT 1-3  ESC: STOP' : 'PRESS T NEAR THE COMPUTAH TO TYPE') : DEVICE === 'mobile' ? 'TAP THE KEYS TO TYPE' : 'PRESS THE KEYS WITH YOUR HANDS', 20, 610);
   compTex.needsUpdate = true;
 }
@@ -2967,11 +2979,11 @@ function tapAt(px, py) { // tap a 3D key or battle button on the screen
 if (DEVICE === 'mobile') {
   document.getElementById('hud').style.display = 'none';
   const css = document.createElement('style');
-  css.textContent = `#touch{position:fixed;inset:0;z-index:6;pointer-events:none;font:bold 15px ui-monospace,Consolas,monospace;color:#fff;-webkit-user-select:none;user-select:none}
+  css.textContent = `#touch{position:fixed;inset:0;z-index:6;pointer-events:none;font:15px "Lilita One",system-ui,sans-serif;color:#fff;-webkit-user-select:none;user-select:none}
 #joy{position:absolute;left:max(18px,env(safe-area-inset-left,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));width:140px;height:140px;border-radius:50%;background:rgba(94,242,255,.12);border:3px solid rgba(94,242,255,.6);pointer-events:auto;touch-action:none}
 #nub{position:absolute;left:45px;top:45px;width:50px;height:50px;border-radius:50%;background:rgba(94,242,255,.7)}
 #tbtns{position:absolute;right:max(14px,env(safe-area-inset-right,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(2,72px);gap:10px;pointer-events:auto}
-#tbtns button{height:62px;border-radius:14px;border:3px solid #ffd447;background:rgba(20,10,40,.75);color:#ffd447;font:bold 15px ui-monospace,Consolas,monospace;touch-action:none}
+#tbtns button{height:62px;border-radius:14px;border:3px solid #ffd447;background:rgba(20,10,40,.75);color:#ffd447;font:15px "Lilita One",system-ui,sans-serif;touch-action:none}
 #tbtns button:active{background:#ffd447;color:#1a0b2e}
 #thelp{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:max(10px,env(safe-area-inset-top,0px));background:rgba(10,5,25,.7);border:2px solid #9b5cff;border-radius:8px;padding:5px 9px;max-width:60vw}`;
   document.head.appendChild(css);
@@ -3022,7 +3034,7 @@ function setDark(on) {
   scene.fog = on ? darkFog : lightFog; scene.background = on ? darkBg : lightBg;
   if (hemi) hemi.intensity = on ? 0.3 : 1.2; sun.intensity = on ? 0.12 : 1.0; riftLight.visible = !on;
   myLantern.intensity = on ? 2.8 : 0;
-  skyStuff ||= scene.children.filter(o => o.isPoints || o === beam || o === core || o === floaters || o === beacon || o === skyEye.root);
+  skyStuff ||= scene.children.filter(o => o.userData.sky || o.isPoints || o === beam || o === core || o === floaters || o === beacon || o === skyEye.root);
   for (const o of skyStuff) o.visible = !on; // no stars, Rift beam or sky Eye in the dark woods
 }
 // ---- the place ----
@@ -3064,7 +3076,7 @@ const scare = new THREE.Group(); scare.position.set(0, -0.02, -0.3); scare.visib
   scare.traverse(o => { o.renderOrder = 1000; }); }
 // ---- HUD ----
 const gmPanel = camPanel(0.32, 0.05, 640, 100, [0, 0.2, -0.7]);
-const gmHudEl = document.createElement('div'); gmHudEl.style.cssText = 'position:fixed;left:50%;top:60px;transform:translateX(-50%);z-index:5;font:bold 18px ui-monospace,Consolas,monospace;color:#fff;background:rgba(10,3,8,.8);border:2px solid #ff3b6b;border-radius:8px;padding:4px 12px;pointer-events:none;display:none'; document.body.appendChild(gmHudEl);
+const gmHudEl = document.createElement('div'); gmHudEl.style.cssText = 'position:fixed;left:50%;top:60px;transform:translateX(-50%);z-index:5;font:18px "Lilita One",system-ui,sans-serif;color:#fff;background:rgba(10,3,8,.8);border:2px solid #ff3b6b;border-radius:8px;padding:4px 12px;pointer-events:none;display:none'; document.body.appendChild(gmHudEl);
 let gmHudText = '';
 function gmStatusText() {
   if (GM.phase === 'idle') return '';
@@ -3080,7 +3092,7 @@ function drawGmHud() {
   const txt = gmStatusText(); if (txt === gmHudText) return; gmHudText = txt;
   gmHudEl.textContent = txt; gmHudEl.style.display = txt && !renderer.xr.isPresenting ? '' : 'none';
   const c = gmPanel.cv.getContext('2d'); c.clearRect(0, 0, 640, 100);
-  if (txt) { c.fillStyle = 'rgba(10,3,8,0.8)'; c.fillRect(0, 0, 640, 100); c.strokeStyle = '#ff3b6b'; c.lineWidth = 5; c.strokeRect(3, 3, 634, 94); c.fillStyle = '#fff'; c.font = 'bold 30px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 320, 52, 610); }
+  if (txt) { c.fillStyle = 'rgba(10,3,8,0.8)'; c.fillRect(0, 0, 640, 100); c.strokeStyle = '#ff3b6b'; c.lineWidth = 5; c.strokeRect(3, 3, 634, 94); c.fillStyle = '#fff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 320, 52, 610); }
   gmPanel.tex.needsUpdate = true;
 }
 // ---- the host runs the round ----
@@ -3355,7 +3367,7 @@ function updateDbg(dt) {
   const c = dbgCv.getContext('2d');
   c.clearRect(0, 0, 512, 256); c.fillStyle = 'rgba(7,4,15,0.85)'; c.fillRect(0, 0, 512, 256);
   c.strokeStyle = '#5ef2ff'; c.lineWidth = 4; c.strokeRect(2, 2, 508, 252);
-  c.font = 'bold 27px monospace';
+  c.font = '27px "Lilita One", system-ui, sans-serif';
   lines.forEach((l, i) => { c.fillStyle = l.startsWith('ERR') ? '#ff5c8a' : i ? '#e8dcff' : '#ffd447'; c.fillText(l, 14, 34 + i * 34); });
   dbgTex.needsUpdate = true;
 }
