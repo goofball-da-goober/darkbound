@@ -62,6 +62,7 @@ const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
 const HIST = 6;           // frames of velocity history
 const MAX_STEP = 0.3;     // max body move per frame from hands (anti tracking-glitch)
+const ARM_REACH = 0.8;    // how far your hands reach compared with your real arms (bigger = longer gorilla arms)
 const PLAYER_SCALE = 0.55;  // gorilla-sized player, like Gorilla Tag: your real height shrinks so your view sits low, down at gorilla height
 const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 4.4, 0, 6.6 + Math.random() * 0.9); // spread players out, clear of the pillars at x=±3.4
 
@@ -316,7 +317,9 @@ const _cur = new THREE.Vector3(), _d = new THREE.Vector3(), _hit = new THREE.Vec
 const bodyPush = new THREE.Vector3();
 
 const headWorld = out => out.copy(camera.position).multiplyScalar(PLAYER_SCALE).applyQuaternion(rig.quaternion).add(rig.position);
-const handWorld = (h, out) => out.copy(h.grip.position).multiplyScalar(PLAYER_SCALE).applyQuaternion(rig.quaternion).add(rig.position);
+// long gorilla arms: your hands reach further from your head than your real hands do (like Gorilla Tag)
+const handWorld = (h, out) => out.copy(h.grip.position).sub(camera.position).multiplyScalar(ARM_REACH / PLAYER_SCALE).add(camera.position)
+  .multiplyScalar(PLAYER_SCALE).applyQuaternion(rig.quaternion).add(rig.position);
 
 // keep head + feet spheres out of geometry by moving the whole rig
 function resolveBody() {
@@ -590,7 +593,7 @@ function makeGorilla(color) {
     const palm = toon(0x3b2a4d); palm.emissive.set(0x5ef2ff); palm.emissiveIntensity = 0;
     return { side, palm, shoulder: part(root, S(0.085), fur), upper: limb(root, 0.058, 0.05, fur), elbow: part(root, S(0.052), fur), fore: limb(root, 0.05, 0.072, fur), hand: makeHand(root, side, palm, skinDark, fur) };
   });
-  const ARM1 = 0.2, ARM2 = 0.22; // upper arm / forearm, matched to your real reach at gorilla size
+  const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   let selfHidden = false;
 
   return {
@@ -605,15 +608,15 @@ function makeGorilla(color) {
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
       // --- body gravity ---
       _neck.copy(p.h); _neck.y -= 0.17;
-      _rest.copy(_neck); _rest.y -= 0.3;
+      _rest.copy(_neck); _rest.y -= 0.25;
       if (!bInit || bp.distanceTo(_neck) > 2) { bp.copy(_rest); bv.set(0, 0, 0); bInit = true; }  // teleports / respawns
       bv.y -= G * dt;                                                   // gravity pulls the body down
       bv.addScaledVector(_bd.copy(_rest).sub(bp), 90 * dt);             // springy hang under the neck
       bv.multiplyScalar(Math.exp(-7 * dt));
       bp.addScaledVector(bv, dt);
       _bd.copy(bp).sub(_neck); const L = _bd.length();                  // stay attached to the neck
-      if (L > 0.44) bp.copy(_neck).addScaledVector(_bd, 0.44 / L);
-      else if (L < 0.16) bp.copy(_neck).addScaledVector(_bd.lengthSq() > 1e-8 ? _bd : _bd.set(0, -1, 0), 0.16 / Math.max(L, 1e-4));
+      if (L > 0.29) bp.copy(_neck).addScaledVector(_bd, 0.29 / L);       // stays joined to the head: only a small swing
+      else if (L < 0.2) bp.copy(_neck).addScaledVector(_bd.lengthSq() > 1e-8 ? _bd : _bd.set(0, -1, 0), 0.2 / Math.max(L, 1e-4));
       _ft.copy(bp); if (pushOut(bp, 0.26)) { _ft.sub(bp).normalize(); const vn = bv.dot(_ft); if (vn > 0) bv.addScaledVector(_ft, -vn); } // land on the ground
       _bd.copy(_neck).sub(bp).normalize();                              // lean the torso along the hang
       _yawQ.setFromAxisAngle(_up, yaw); _tilt.setFromUnitVectors(_up, _bd);
@@ -621,7 +624,7 @@ function makeGorilla(color) {
       for (const A of arms) {
         const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
         A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
-        _gsh.set(A.side * 0.22, -0.36, 0.03).applyAxisAngle(_up, yaw).add(p.h);   // shoulder: on the sides of the body, well below your eyes (like Gorilla Tag)
+        _gsh.set(A.side * 0.22, 0.1, 0.02).applyQuaternion(body.quaternion).add(body.position); // shoulder: part of the body, on its upper sides (like Gorilla Tag)
         _gwr.set(0, 0.008, 0.075).applyQuaternion(hq).add(hp);
         _gbd.set(A.side * 0.55, -0.75, 0.25).applyAxisAngle(_up, yaw);            // elbows hang down and a little out
         const reach = _gsh.distanceTo(_gwr), k = Math.max(1, reach / ((ARM1 + ARM2) * 0.96)); // arms stretch instead of popping off
@@ -677,8 +680,8 @@ function updateMyPose(t, dt) {
   } else { // knuckle-walk animation
     const spd = Math.min(1, Math.hypot(vel.x, vel.z) / 6), sw = Math.sin(t * 7) * spd;
     _q.setFromAxisAngle(_up, yaw);
-    myPose.l.set(-0.3, -0.64 + Math.max(0, sw) * 0.1, -0.22 + sw * 0.2).applyQuaternion(_q).add(myPose.h);
-    myPose.r.set(0.3, -0.64 + Math.max(0, -sw) * 0.1, -0.22 - sw * 0.2).applyQuaternion(_q).add(myPose.h);
+    myPose.l.set(-0.34, -0.72 + Math.max(0, sw) * 0.12, -0.3 + sw * 0.25).applyQuaternion(_q).add(myPose.h);
+    myPose.r.set(0.34, -0.72 + Math.max(0, -sw) * 0.12, -0.3 - sw * 0.25).applyQuaternion(_q).add(myPose.h);
     myPose.lq.copy(_q); myPose.rq.copy(_q);
     me.setTouch(false, false);
   }
