@@ -43,7 +43,7 @@
   <div class="top"><span class="t">DARKBOUND</span><span id="ver"></span><span class="room"><span id="net">connecting…</span></span><span class="tab">TAB</span></div>
   <div class="body">
     <div class="keys"><kbd>WASD</kbd><span>move</span><kbd>SPACE</kbd><span>jump</span><kbd>SHIFT</kbd><span>run</span><kbd>E</kbd><span>use / slap</span><kbd>C</kbd><span>body view</span><kbd>R</kbd><span>respawn</span><kbd>V</kbd><span>Dark Cam</span><kbd>T</kbd><span>type (COMPUTAH)</span></div>
-    <p>In VR: slap the ground to move and fling your arms to jump. Right stick turns, B or Y respawns, X mutes, click a stick to hold the Dark Cam.</p>
+    <p>In VR: slap the ground to move and fling your arms to jump. Right stick turns, X mutes, click a stick to hold the Dark Cam.</p>
     <dl><dt>Rift fountain</dt><dd>the story, with Claude</dd><dt>Arena</dt><dd>fan bosses (south-east)</dd><dt>Portal</dt><dd>Darkwood, Horror, BTM (west)</dd><dt>COMPUTAH</dt><dd>name, rooms, settings (east)</dd><dt>Shops</dt><dd>hats and monsters (south)</dd></dl>
   </div>
 </div>
@@ -579,7 +579,7 @@ function updateXR(dt) {
     h.mesh.material.emissiveIntensity = h.coll ? 0.9 : 0.12;
   }
 
-  // 4) buttons: right stick snap turn, B/Y respawn
+  // 4) buttons: right stick snap turn
   let anyRespawn = false, anyMute = false;
   for (const h of act) {
     const gp = h.source.gamepad; if (!gp) continue;
@@ -589,7 +589,7 @@ function updateXR(dt) {
       else { if (turnReady && Math.abs(x) > 0.7) { snapTurn(-Math.sign(x) * (SET.turn === 'snap45' ? Math.PI / 4 : Math.PI / 6)); turnReady = false; }
       if (Math.abs(x) < 0.3) turnReady = true; }
     }
-    if (gp.buttons[5]?.pressed) anyRespawn = true;
+    // (B and Y no longer respawn you: no button teleports you. Falling off the world still brings you back.)
     if (h.source.handedness === 'left' && gp.buttons[4]?.pressed) anyMute = true; // X button
   }
   if (anyRespawn && !respawnHeld) respawn();
