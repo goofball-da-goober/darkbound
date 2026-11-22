@@ -1834,15 +1834,32 @@ function startStory() {
   CL.pos.set(SX + 1.6, 1.8, SZ - 1); CL.goal.copy(CL.pos);
   banner('THE HOLLOW', 'STORY MODE • CHAPTER 1', 3, '#ffb070');
   if (STORY.done) { makeBridge(); makePortal(); showC2Entry(); STORY.state = 'done'; for (const s of STORY.shards) { s.got = true; s.m.visible = false; }
-    say(['Welcome back, gorilla!', 'The Eye\'s door is still sealed. It wakes up in version 2.5.', 'Chapter 2 is through the gold portal right here, next to you.', 'Or go train in the Boss Arena. The portal by the door takes you home.']); return; }
+    say(['Oh! A gorilla! Have we met? You look... familiar. Are you a big squirrel?', 'Oh wait, it\'s YOU! The door is still locked. It opens in version two point... five? I think. Numbers are hard.', 'The gold portal next to you goes to Chapter 2. I think. Or it\'s a very shiny donut.', 'The other portal goes home. Probably.']); return; }
   STORY.state = 'arrive'; STORY.got = 0; for (const sh of STORY.shards) { sh.got = false; sh.m.visible = true; }
-  say(['Whoa! You jumped right into the Rift! Hi, I\'m Claude.', 'I keep the lights on down here in the Hollow, under Darkbound.', 'Everything up there went dark when THE EYE opened.', 'First, let\'s get you moving. Climb the golden steps up to me!'], () => {
+  say(['Huh?! Something fell out of the sky! ...Oh. You\'re a gorilla. Hi! I\'m Claude! I think.', 'I keep the lights on down here. Wait. Are they on? It\'s a little dark. Hmm.', 'Somebody told me THE EYE made everything go dark. I forget who. Maybe it was a rock.', 'Uhh... climb the shiny gold steps up to me! Or down. No, up. Definitely up.'], () => {
     CL.goal.set(SX + 1.5, PLAT_Y + 1.5, SZ - 28); STORY.state = 'climb';
   });
 }
 function storyTouch(p, r) { return myPose.h.distanceTo(p) < r || myPose.l.distanceTo(p) < r || myPose.r.distanceTo(p) < r; }
 let _clLook = new THREE.Vector3();
+// Claude is easily confused: little ? marks pop up, the head tilts, the eyes wander off
+const qCv = document.createElement('canvas'); qCv.width = qCv.height = 64;
+{ const c = qCv.getContext('2d'); c.font = 'bold 56px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('?', 32, 34); c.fillStyle = '#ffd447'; c.fillText('?', 32, 34); }
+const qTex = new THREE.CanvasTexture(qCv); qTex.colorSpace = THREE.SRGBColorSpace;
+const qMarks = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ map: qTex, transparent: true, depthWrite: false })); m.visible = false; scene.add(m); return { m, t: 0 }; });
+const confused = { qT: 2, glanceT: 0, glanceNext: 3, glance: new THREE.Vector3() };
+function updateConfused(dt, t) {
+  if ((confused.qT -= dt) <= 0) { // pop a ? mark every few seconds (more often while talking)
+    confused.qT = (STORY.cur ? 1.6 : 3.5) + Math.random() * 2;
+    const q = qMarks.find(x => !x.m.visible);
+    if (q) { q.t = 0; q.m.visible = true; q.m.position.copy(claude.root.position).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.55, (Math.random() - 0.5) * 0.3)); }
+  }
+  for (const q of qMarks) if (q.m.visible) { q.t += dt; q.m.position.y += dt * 0.25; q.m.rotation.z = Math.sin(q.t * 6) * 0.3; q.m.lookAt(myPose.h); q.m.material.opacity = Math.max(0, 1 - q.t / 1.8); q.m.scale.setScalar(Math.min(1, q.t * 5)); if (q.t > 1.8) q.m.visible = false; }
+  if ((confused.glanceNext -= dt) <= 0) { confused.glanceNext = 3 + Math.random() * 4; confused.glanceT = 0.9; confused.glance.copy(claude.root.position).add(new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.3) * 3, (Math.random() - 0.5) * 6)); }
+  confused.glanceT -= dt;
+}
 function updateStory(dt, t) {
+  updateConfused(dt, t);
   STORY.cd -= dt;
   // the fountain: jump into the Rift beam in the middle of the plaza
   const h = myPose.h;
@@ -1853,13 +1870,13 @@ function updateStory(dt, t) {
   claude.root.position.copy(CL.pos); claude.root.position.y += Math.sin(t * 2) * 0.08;
   const lookP = CL.lookAt || h, want = Math.atan2(lookP.x - CL.pos.x, lookP.z - CL.pos.z); let d = want - CL.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   CL.yaw += d * (1 - Math.exp(-4 * dt)); claude.root.rotation.y = CL.yaw;
-  claude.body.rotation.z = Math.sin(t * 1.3) * 0.06;
+  claude.body.rotation.z = Math.sin(t * 0.8) * 0.2 + Math.sin(t * 2.3) * 0.05; // big puzzled head tilts
   const talking = !!STORY.cur && STORY.shown < STORY.cur.length;
   claude.hands[0].position.y = claude.hands[0].userData.y0 + 0.6 * (talking ? Math.abs(Math.sin(t * 8)) * 0.15 : Math.sin(t * 2) * 0.03);
   claude.hands[1].position.y = claude.hands[1].userData.y0 + 0.6 * (talking ? Math.abs(Math.cos(t * 7)) * 0.1 : Math.cos(t * 2) * 0.03);
   claude.smile.scale.y = talking ? 1 + Math.abs(Math.sin(t * 18)) * 1.2 : 1;
   claude.bulb.scale.setScalar(1 + Math.sin(t * 3) * 0.15);
-  claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(lookP)).normalize();
+  claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(confused.glanceT > 0 && !CL.lookAt ? confused.glance : lookP)).normalize(); // eyes wander off sometimes
   for (const p of claude.eyes) p.position.set(_clLook.x * 0.02, _clLook.y * 0.018, p.userData.z);
   clTagM.position.copy(claude.root.position); clTagM.position.y += 0.82; clTagM.lookAt(h);
   const spk = STORY.spk || claude.root; bubM.position.copy(spk.position); bubM.position.y += STORY.spk ? STORY.spkH : 1.5; bubM.lookAt(h);
@@ -1876,26 +1893,26 @@ function updateStory(dt, t) {
   doorEye.setOpen(here && STORY.state === 'door' ? 0.12 + Math.sin(t * 2) * 0.05 : 0.02);
   if (!here) return;
   // checkpoints: fall off → back to the last safe spot, not the lobby
-  if (rig.position.y < -8) { teleport(STORY.check.x, STORY.check.y, STORY.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU', 1.5, '#ffb070'); sfx(300, 600, 0.2, 'sine', 0.15); }
+  if (rig.position.y < -8) { teleport(STORY.check.x, STORY.check.y, STORY.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU (BY ACCIDENT)', 1.5, '#ffb070'); sfx(300, 600, 0.2, 'sine', 0.15); }
   if (STORY.state === 'climb' && h.y > PLAT_Y && h.z < SZ - 26.5) {
     STORY.state = 'shards'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 28.5);
     banner('CHAPTER 2', 'THE LIGHT SHARDS', 2.5, '#ffb070');
-    say(['Nice climbing, gorilla!', 'The Eye broke the light into shards. Three of them fell up here.', 'Touch all three shards! One is on top of that tall crystal. Climb it!']);
+    say(['You made it! I forgot you were coming. Hi again!', 'The Eye broke the light into... crumbs? Shards! Shards. Three of them fell up here.', 'Touch all three shiny shards! One is on that tall crystal. Don\'t ask me how it got up there.']);
   }
   if (STORY.state === 'shards' || STORY.state === 'climb') for (const s of STORY.shards) {
     if (s.got || !storyTouch(s.m.position, 0.85)) continue;
     s.got = true; s.m.visible = false; STORY.got++; burst(s.m.position, 0xffe08a);
     [880, 1175, 1568].forEach((f, i) => sfx(f, f, 0.2, 'triangle', 0.14, i * 0.07));
     for (const hh of hands) hh.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.7, 80);
-    if (STORY.got < 3) say([['That\'s one!', 'That\'s two! One more!'][STORY.got - 1]]);
+    if (STORY.got < 3) say([['That\'s one! Wait, or two? No. One.', 'That\'s two! I counted on my fingers!'][STORY.got - 1]]);
     else {
       STORY.state = 'bridge'; CL.goal.set(SX - 1.5, PLAT_Y + 1.5, SZ - 44);
-      say(['All three! Watch this...'], () => { makeBridge(); sfx(300, 900, 0.8, 'sine', 0.2); banner('CHAPTER 3', 'THE SEALED DOOR', 2.5, '#ffb070'); say(['A bridge of light! Come over to the door.']); });
+      say(['All three! Okay... I have no idea what happens now...'], () => { makeBridge(); sfx(300, 900, 0.8, 'sine', 0.2); banner('CHAPTER 3', 'THE SEALED DOOR', 2.5, '#ffb070'); say(['WHOA! A bridge! Did I do that? I\'m taking credit. Come to the door!']); });
     }
   }
   if (STORY.state === 'bridge' && STORY.bridge && h.z < SZ - 46 && h.y > PLAT_Y - 0.5) {
     STORY.state = 'door'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 47);
-    say(['This is the Eye\'s door. Feel that? It\'s watching.', 'The Eye is the O in DARKBOUND. It\'s the very last boss.', 'Right now it\'s sealed shut. It wakes up in version 2.5. You\'re playing alpha 0.1.', 'Until then, get strong: beat the Warden, the Witch and the Colossus in the Boss Arena.', 'And look back where you landed: a gold CHAPTER 2 portal just opened!', 'This portal takes you home. I\'ll be right here, keeping the lights on. See you, gorilla!'], () => {
+    say(['This is the Eye\'s door. Is it a door? It has an eye on it. Doors don\'t usually have eyes.', 'Somebody said the Eye is the O in DARKBOUND. Which O? There\'s only one O. Oh. That one.', 'It\'s sealed shut until version 2.5. I knocked once. It blinked at me. I ran away.', 'Go beat the Warden, the Witch and the... Collie-sus? In the Boss Arena. You\'ll get strong!', 'Oh, a gold CHAPTER 2 portal just opened where you landed! I didn\'t touch anything. I promise.', 'This portal goes home. Bye, gorilla! Or hello? I always mix those up.'], () => {
       makePortal(); STORY.state = 'done'; STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
       banner('CHAPTER COMPLETE', 'TO BE CONTINUED IN v' + EYE_VERSION, 3.5, '#6dff9a');
     });
@@ -1967,7 +1984,7 @@ function startC2() {
   C2.bat.alive = false; C2.bat.root.visible = false;
   sfx(200, 1200, 0.6, 'sine', 0.25); banner('CHAPTER 2', 'THE SHATTERED SPIRE', 3, '#ffd447');
   C2.state = 'intro';
-  c2Say(['Welcome to the Shattered Spire!', 'This tower held the last lantern of Darkbound. The Eye sent its Gloomlets to snuff it out.', 'They\'re bouncy little blobs. Slap them to pop them! Five of them are in the courtyard.'], () => {
+  c2Say(['Welcome to the... Shattered Spire! I read it on a sign. I can\'t read. I guessed.', 'This tower had the last lantern. The Eye sent Gloomlets to blow it out. Like birthday candles. But sad.', 'They\'re bouncy blobs. Slap them to pop them! There are five. Or six. Five!'], () => {
     C2.state = 'glooms'; CL.goal.set(C2X, 2.6, C2Z - 12);
   });
 }
@@ -1978,7 +1995,7 @@ function popGloom(g) {
   if (left > 0) banner('POP!', left + ' LEFT', 0.9, '#9b5cff');
   else {
     C2.state = 'climb';
-    c2Say(['Pop pop pop! All the Gloomlets are gone!', 'Now climb the spiral steps to the top of the spire. I\'ll meet you up there.'], () => { CL.goal.set(C2X - 2, C2TOP + 1.4, C2Z - 32.5); });
+    c2Say(['Pop pop pop! All gone! Were they jelly? I hope they were jelly.', 'Now climb the twisty steps to the top. I\'ll float up. Floating is my best skill. My only skill.'], () => { CL.goal.set(C2X - 2, C2TOP + 1.4, C2Z - 32.5); });
   }
 }
 function hitBat() {
@@ -1988,7 +2005,7 @@ function hitBat() {
   if (C2.hits < 5) { banner('HIT ' + C2.hits + ' / 5', '', 0.9, '#5ef2ff'); return; }
   b.alive = false; b.root.visible = false; sfx(80, 30, 1, 'sawtooth', 0.25);
   C2.state = 'light'; banner('SPARK BAT DEFEATED', '', 2, '#6dff9a');
-  c2Say(['You did it! That bat is done.', 'Quick, touch the lantern to light it!']);
+  c2Say(['You did it! The bat is done! Was it a bat? It looked like a flying sock.', 'Quick, touch the lantern! The big glass box thing!']);
 }
 function knock(from, k = 2.5) { // a gentle shove (no damage in story mode)
   if (C2.knockCd > 0) return; C2.knockCd = 0.6;
@@ -2008,7 +2025,7 @@ function updateC2(dt, t) {
   if (C2.entry) { C2.entry.rotation.y += dt * 0.6; C2.entry.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15; if (storyTouch(C2.entry.position, 1.0)) startC2(); }
   if (C2.home) { C2.home.rotation.y += dt * 0.6; if (storyTouch(C2.home.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); } }
   if (!inC2(h)) return;
-  if (rig.position.y < -8) { teleport(C2.check.x, C2.check.y, C2.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU', 1.5, '#ffb070'); }
+  if (rig.position.y < -8) { teleport(C2.check.x, C2.check.y, C2.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU (BY ACCIDENT)', 1.5, '#ffb070'); }
   // hand slaps (VR)
   const swings = [];
   hands.forEach((hh, i) => { if (!hh.source || !renderer.xr.isPresenting) return; const sp = hh.last.distanceTo(C2.prev[i]) / Math.max(dt, 1e-3); C2.prev[i].copy(hh.last); if (sp > 1.0) swings.push(hh.last); });
@@ -2041,7 +2058,7 @@ function updateC2(dt, t) {
     C2.state = 'bat'; C2.check.set(C2X + 1.6, C2TOP + 0.1, C2Z - 32.2);
     const b = C2.bat; b.pos.set(C2X, C2TOP + 4, C2Z - 34); b.mode = 'orbit'; b.t = 4; b.alive = true; b.root.visible = true;
     banner('SPARK BAT', 'MINI-BOSS', 2.2, '#5ef2ff'); sfx(900, 300, 0.4, 'sawtooth', 0.15);
-    c2Say(['Uh oh. A Spark Bat! It guards the lantern.', renderer.xr.isPresenting ? 'When it dives at you, slap it! Five good hits should do it.' : 'When it dives at you, press E to slap it! Five good hits should do it.']);
+    c2Say(['Uh oh. Is that a bird? A Spark Bat! It\'s guarding the lantern. Or it just lives there.', renderer.xr.isPresenting ? 'When it swoops at you, slap it! Five good slaps!' : 'When it swoops at you, press E to slap it! Five good slaps!']);
   }
   const b = C2.bat;
   if (b && b.alive) {
@@ -2060,7 +2077,7 @@ function updateC2(dt, t) {
   if (C2.state === 'light' && storyTouch(_c2t.set(C2X, C2TOP + 0.8, C2Z - 34), 1.1)) {
     C2.state = 'lit'; lanternFlame.material.color.set(0xfff1a8); lanternBeam.visible = true; burst(_c2t, 0xffe08a);
     [523, 659, 784, 1047, 1319].forEach((f, i) => sfx(f, f, 0.3, 'triangle', 0.16, i * 0.1));
-    c2Say(['Look at that! The Spire\'s lantern is shining again!', 'Every lantern we light makes the Eye a little weaker...', '...but I think it noticed us. That\'s a story for Chapter 3.', 'And look: a pink portal just opened. Chapter 2.5, the Lantern Camp. Some friends want to meet you!', 'The blue one takes you home. Great job, gorilla!'], () => {
+    c2Say(['Ooooh, shiny! The lantern is on again! I knew it would work. I did not know it would work.', 'Every lantern we light makes the Eye weaker. Somebody told me that. Maybe the rock again.', 'I think the Eye saw us. Is it mad? It looks mad. Eyes always look mad.', 'Hey, a pink portal opened! Chapter 2.5, the Lantern Camp. My friends are there! I have friends!', 'The blue one goes home. Great job, gorilla! Or monkey? Are you a monkey? I\'m a monkey.'], () => {
       C2.home = storyPortal(C2X + 1.8, C2TOP + 1.3, C2Z - 31.8, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
       C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { } showCampEntries();
       banner('CHAPTER 2 COMPLETE', 'TO BE CONTINUED', 3.5, '#6dff9a');
@@ -2169,21 +2186,21 @@ function startCamp() {
   if (B3.home) { scene.remove(B3.home); B3.home = null; } if (B3.tell) { scene.remove(B3.tell); B3.tell = null; }
   sfx(200, 1200, 0.6, 'sine', 0.25); banner('CHAPTER 2.5', 'THE LANTERN CAMP', 3, '#ff9ad5');
   B3.state = 'intro';
-  say(['This is the Lantern Camp! Everyone who escaped the dark lives here now.', 'Go say hi! Just walk up to someone to talk.'], () => { B3.state = 'meet'; CL.goal.set(B3X + 2, 1.9, B3Z + 1); });
+  say(['This is the Lantern Camp! Everybody who got away from the dark lives here. Even me! I think I live here.', 'Go say hi! Walk up to someone. Don\'t say hi to the campfire. I tried. It didn\'t answer.'], () => { B3.state = 'meet'; CL.goal.set(B3X + 2, 1.9, B3Z + 1); });
 }
 function doryArrives() {
   B3.state = 'dory'; B3.dory.root.visible = true; sfx(880, 1320, 0.5, 'sine', 0.15); sfx(1320, 1760, 0.5, 'sine', 0.1, 0.25);
   CL.goal.set(B3X + 1.2, 1.9, B3Z - 2.5);
   say([
-    { t: 'Oh! Oh no. Oh hi. That\'s... that\'s Dory.', ...CLAUDE_C },
+    { t: 'Oh! Oh no. Oh hi. That\'s... uh... what\'s her name... Dory! It\'s Dory!', ...CLAUDE_C },
     doryL('Hi there! You must be the gorilla who lit the Spire\'s lantern!'),
     doryL('I\'m Dory. I keep the flower lanterns. Thank you for bringing the light back.'),
     doryL('Claude, you\'re all pink. Are you okay?'),
-    { t: 'Me? Pink? No! It\'s... the campfire. Very warm. Haha. Ha.', ...CLAUDE_C },
+    { t: 'Pink? Me? Is pink a color? It\'s the campfire. Or I\'m a strawberry now. Haha. Ha.', ...CLAUDE_C },
     doryL('Okay! I\'ll be by the fire if you need me.'),
   ], () => {
     B3.state = 'secret'; CL.lookAt = null; CL.goal.copy(myPose.h).add(new THREE.Vector3(0.9, 0.3, 0.6));
-    say(['Psst. Gorilla. Come here.', 'Can you keep a secret?', 'I... kind of have a crush on Dory.', 'You can\'t tell her! Not yet. Promise?', 'Some day I\'ll tell her myself. But not in this chapter.'], () => {
+    say(['Psst. Gorilla. Come here. Closer. Not THAT close.', 'When Dory is near, my face gets hot and my tummy does a flip. Am I sick?', 'Nova says it\'s a "crush". What\'s a crush? Is it bad? Is it a fruit?', 'Whatever it is, DON\'T tell her! I don\'t even know what it is yet!', 'I\'ll figure it out some day. Maybe. Not in this chapter though.'], () => {
       banner('SECRET: CLAUDE ♥ DORY', 'YOU PROMISED NOT TO TELL', 3.5, '#ff5c8a');
       B3.state = 'free'; B3.done = true; try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
       B3.tell = storyPortal(B3X - 2.2, 1.0, B3Z - 3.1, 'TELL DORY?', 'LOCKED: YOU PROMISED', 0xff5c8a); B3.tell.scale.setScalar(0.45);
@@ -2206,7 +2223,7 @@ function updateCamp(dt, t) {
     if (B3.state === 'meet' && !n.met && !STORY.cur && Math.hypot(h.x - n.root.position.x, h.z - n.root.position.z) < 2.2) {
       n.met = true; say(n.lines.map(l => ({ t: l, s: n.root, n: n.name, c: n.col, h: n.h })), () => {
         const left = B3.npcs.filter(x => !x.met).length;
-        if (left) say([left === 1 ? 'One more person to meet!' : 'Go meet the others too!']); else setTimeout(doryArrives, 1200);
+        if (left) say([left === 1 ? 'One more person to meet! I think. I lost count.' : 'Go meet the others! There\'s a moth, a rock, and a... toaster?']); else setTimeout(doryArrives, 1200);
       });
     }
   }
@@ -2227,7 +2244,7 @@ function updateCamp(dt, t) {
     B3.tell.rotation.y += dt;
     if (B3.cd <= 0 && storyTouch(B3.tell.position, 0.6)) {
       B3.cd = 6; banner('LOCKED', 'YOU PROMISED CLAUDE', 2, '#ff5c8a'); sfx(200, 120, 0.3, 'square', 0.15);
-      say([{ t: 'NOOO! You promised! Not yet!', ...CLAUDE_C }, doryL('Hm? Did somebody say something?'), { t: 'Nope! Nothing! Lovely weather! In the dark!', ...CLAUDE_C }]);
+      say([{ t: 'NOOO! You promised! I think you promised! Did you?', ...CLAUDE_C }, doryL('Hm? Did somebody say something?'), { t: 'Nope! Nothing! Nice weather! In the dark! Very... dark weather!', ...CLAUDE_C }]);
     }
   }
   if (B3.home) { B3.home.rotation.y += dt * 0.6; if (storyTouch(B3.home.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); } }
