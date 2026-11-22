@@ -254,6 +254,22 @@ addBox(SX + 3.6, PLAT_Y, SZ - 53, 1.4, 7, 1.4, COL.wall, EDGE.violet);
 addBox(SX, PLAT_Y + 7, SZ - 53, 8.6, 1.2, 1.6, COL.wall, EDGE.violet);
 addBox(SX, PLAT_Y, SZ - 53.5, 5.8, 7, 0.6, COL.maze, EDGE.pink);                          // the sealed door itself
 
+// --- STORY CHAPTER 2: the Shattered Spire (east, far past the border) ---
+const C2X = 170, C2Z = 0, C2TOP = 8.3;
+addBox(C2X, 0, C2Z, 10, 0.5, 10, COL.stoneHi, EDGE.cyan);                                    // arrival pad
+addBox(C2X, 0, C2Z - 16, 22, 0.5, 22, COL.stone, EDGE.violet);                               // courtyard (Gloomlets live here)
+addBox(C2X - 11, 0.5, C2Z - 16, 0.4, 1, 22, COL.maze, EDGE.violet);
+addBox(C2X + 11, 0.5, C2Z - 16, 0.4, 1, 22, COL.maze, EDGE.violet);
+addBox(C2X - 7, 0.5, C2Z - 27, 8, 1, 0.4, COL.maze, EDGE.violet);                            // north wall, gap in the middle
+addBox(C2X + 7, 0.5, C2Z - 27, 8, 1, 0.4, COL.maze, EDGE.violet);
+addBox(C2X, 0, C2Z - 28.6, 3, 0.5, 3.2, COL.stone, EDGE.violet);                             // path to the spire
+addBox(C2X, 0, C2Z - 34, 1.6, C2TOP - 0.4, 1.6, COL.crystal, EDGE.cyan);                     // the spire's broken core
+for (let i = 0; i < 12; i++) {                                                                 // spiral steps up
+  const a = i * 0.55, top = 0.5 + 0.6 * (i + 1);
+  addBox(C2X + Math.sin(a) * 3.6, top - 0.4, C2Z - 34 + Math.cos(a) * 3.6, 2.2, 0.4, 2.2, COL.gold, EDGE.gold);
+}
+addBox(C2X, C2TOP - 0.4, C2Z - 34, 6, 0.4, 6, COL.stoneHi, EDGE.pink);                       // top of the spire
+
 buildMeshes();
 
 // --- the Rift: a pillar of light with rising sparks ---
@@ -1791,8 +1807,8 @@ function startStory() {
   teleport(SX, 0.6, SZ + 3); STORY.check.set(SX, 0.6, SZ + 3);
   CL.pos.set(SX + 1.6, 1.8, SZ - 1); CL.goal.copy(CL.pos);
   banner('THE HOLLOW', 'STORY MODE • CHAPTER 1', 3, '#ffb070');
-  if (STORY.done) { makeBridge(); makePortal(); STORY.state = 'done'; for (const s of STORY.shards) { s.got = true; s.m.visible = false; }
-    say(['Welcome back, gorilla!', 'The Eye\'s door is still sealed. It wakes up in version 2.5.', 'Go train in the Boss Arena. The portal by the door takes you home.']); return; }
+  if (STORY.done) { makeBridge(); makePortal(); showC2Entry(); STORY.state = 'done'; for (const s of STORY.shards) { s.got = true; s.m.visible = false; }
+    say(['Welcome back, gorilla!', 'The Eye\'s door is still sealed. It wakes up in version 2.5.', 'Chapter 2 is through the gold portal right here, next to you.', 'Or go train in the Boss Arena. The portal by the door takes you home.']); return; }
   STORY.state = 'arrive'; STORY.got = 0; for (const sh of STORY.shards) { sh.got = false; sh.m.visible = true; }
   say(['Whoa! You jumped right into the Rift! Hi, I\'m Claude.', 'I keep the lights on down here in the Hollow, under Darkbound.', 'Everything up there went dark when THE EYE opened.', 'First, let\'s get you moving. Climb the golden steps up to me!'], () => {
     CL.goal.set(SX + 1.5, PLAT_Y + 1.5, SZ - 28); STORY.state = 'climb';
@@ -1853,7 +1869,7 @@ function updateStory(dt, t) {
   }
   if (STORY.state === 'bridge' && STORY.bridge && h.z < SZ - 46 && h.y > PLAT_Y - 0.5) {
     STORY.state = 'door'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 47);
-    say(['This is the Eye\'s door. Feel that? It\'s watching.', 'The Eye is the O in DARKBOUND. It\'s the very last boss.', 'Right now it\'s sealed shut. It wakes up in version 2.5. You\'re playing alpha 0.1.', 'Until then, get strong: beat the Warden, the Witch and the Colossus in the Boss Arena.', 'This portal takes you home. I\'ll be right here, keeping the lights on. See you, gorilla!'], () => {
+    say(['This is the Eye\'s door. Feel that? It\'s watching.', 'The Eye is the O in DARKBOUND. It\'s the very last boss.', 'Right now it\'s sealed shut. It wakes up in version 2.5. You\'re playing alpha 0.1.', 'Until then, get strong: beat the Warden, the Witch and the Colossus in the Boss Arena.', 'And look back where you landed: a gold CHAPTER 2 portal just opened!', 'This portal takes you home. I\'ll be right here, keeping the lights on. See you, gorilla!'], () => {
       makePortal(); STORY.state = 'done'; STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
       banner('CHAPTER COMPLETE', 'TO BE CONTINUED IN v' + EYE_VERSION, 3.5, '#6dff9a');
     });
@@ -1862,7 +1878,172 @@ function updateStory(dt, t) {
   if (STORY.portal && storyTouch(STORY.portal.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); }
 }
 
-window.__boss = { startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= STORY CHAPTER 2: THE SHATTERED SPIRE =================
+// Unlocks after Chapter 1. Pop the Gloomlets, climb the spire, beat the Spark Bat, relight the last lantern.
+const C2 = { state: 'idle', done: false, check: new THREE.Vector3(C2X, 0.6, C2Z + 3), glooms: [], bat: null, hits: 0, entry: null, home: null, knockCd: 0, prev: [new THREE.Vector3(), new THREE.Vector3()] };
+try { C2.done = localStorage.getItem('darkbound-story-2') === 'done'; } catch (e) { }
+const inC2 = p => Math.abs(p.x - C2X) < 30 && Math.abs(p.z - (C2Z - 17)) < 28;
+function makeGloomlet() { // mini-boss "Gloomlet": a bouncing purple slime, little horns, one big eye
+  const root = new THREE.Group(), goo = toon(0x9b5cff, 0.3), dark = toon(0x4a2a80, 0.15);
+  const blob = part(root, S(1, 22, 16), goo, [0, 0, 0], [1.15, 0.8, 1.1], 0.06);
+  part(root, S(0.5, 16, 12), B_WHITE, [0, 0.15, 0.85], [1, 1.1, 0.45], 0.04);
+  const pupil = new THREE.Mesh(S(0.22, 12, 8), B_PUPIL); pupil.position.set(0, 0.15, 1.0); root.add(pupil);
+  for (const s of [-1, 1]) part(root, new THREE.ConeGeometry(0.14, 0.5, 10), dark, [s * 0.45, 0.85, 0.1], null, 0.03).rotation.z = -s * 0.4;
+  part(root, new THREE.TorusGeometry(0.18, 0.05, 6, 14, Math.PI), dark, [0, -0.3, 0.92], null, 0).rotation.z = Math.PI;
+  root.scale.setScalar(0.32); scene.add(root);
+  return { root, blob };
+}
+function makeSparkBat() { // mini-boss "Spark Bat": fast cyan bat with glowing wings
+  const root = new THREE.Group(), fur = toon(0x2a6f86, 0.2);
+  const mem = new THREE.MeshToonMaterial({ color: 0x5ef2ff, gradientMap: toonGrad, emissive: 0x5ef2ff, emissiveIntensity: 0.4, side: THREE.DoubleSide });
+  part(root, S(0.8, 20, 14), fur, null, [1, 1, 0.95], 0.05);
+  const wings = [-1, 1].map(s => {
+    part(root, new THREE.ConeGeometry(0.25, 0.7, 10), fur, [s * 0.45, 0.85, 0], null, 0.03).rotation.z = -s * 0.35;
+    const w = new THREE.Group(); w.position.set(s * 0.7, 0.15, -0.1); root.add(w);
+    const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(s * 1.9, 0.6); sh.lineTo(s * 1.6, -0.2); sh.lineTo(s * 1.2, 0.05); sh.lineTo(s * 0.9, -0.45); sh.lineTo(s * 0.5, -0.15); sh.lineTo(0, -0.4); sh.closePath();
+    const g = new THREE.ShapeGeometry(sh); w.add(new THREE.Mesh(g, mem), new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0x06020c })));
+    part(root, new THREE.ConeGeometry(0.06, 0.18, 6), B_WHITE, [s * 0.16, -0.38, 0.68], null, 0.01).rotation.x = Math.PI; // fangs
+    const e = part(root, S(0.17, 14, 10), B_WHITE, [s * 0.26, 0.12, 0.62], [1, 1.15, 0.5], 0.03); const p = new THREE.Mesh(S(0.08, 10, 8), B_PUPIL); p.position.z = 0.12; e.add(p);
+    return w;
+  });
+  root.scale.setScalar(0.45); root.visible = false; scene.add(root);
+  return { root, wings, mat: mem, pos: new THREE.Vector3(), target: new THREE.Vector3(), mode: 'orbit', t: 3, ang: 0, flash: 0, alive: false };
+}
+// the last lantern on top of the spire
+const lantern = new THREE.Group(); lantern.position.set(C2X, C2TOP, C2Z - 34); scene.add(lantern);
+part(lantern, new THREE.CylinderGeometry(0.5, 0.6, 0.3, 16), toon(0x2b2346, 0.1), [0, 0.15, 0], null, 0.02);
+part(lantern, new THREE.BoxGeometry(0.8, 1.1, 0.8), new THREE.MeshBasicMaterial({ color: 0x9ff6ff, transparent: true, opacity: 0.18, depthWrite: false }), [0, 0.85, 0], null, 0);
+for (const [x, z] of [[-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4]]) part(lantern, new THREE.BoxGeometry(0.06, 1.1, 0.06), toon(0x4a3a0c, 0.3), [x, 0.85, z], null, 0.01);
+part(lantern, new THREE.ConeGeometry(0.62, 0.45, 4), toon(0x4a3a0c, 0.3), [0, 1.62, 0], null, 0.015).rotation.y = Math.PI / 4;
+const lanternFlame = new THREE.Mesh(S(0.22, 14, 10), new THREE.MeshBasicMaterial({ color: 0x3a2f55 })); lanternFlame.position.y = 0.8; lantern.add(lanternFlame);
+const lanternBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 140, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1a8, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+lanternBeam.position.y = 71; lanternBeam.visible = false; lantern.add(lanternBeam);
+function storyPortal(x, y, z, title, sub, color) {
+  const g = new THREE.Group(); g.position.set(x, y, z);
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.08, 10, 40), new THREE.MeshBasicMaterial({ color })));
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(0.85, 32), new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const lab = labelTex(); lab.draw([title, sub, '#' + new THREE.Color(color).getHexString()]);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.33), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, side: THREE.DoubleSide })); sign.position.y = 1.3; g.add(sign);
+  scene.add(g); return g;
+}
+function showC2Entry() { if (!C2.entry) C2.entry = storyPortal(SX - 3.2, 1.4, SZ - 1.5, 'CHAPTER 2', 'THE SHATTERED SPIRE', 0xffd447); }
+if (STORY.done) showC2Entry();
+function c2Say(lines, then) { say(lines, then); }
+function startC2() {
+  teleport(C2X, 0.6, C2Z + 3); C2.check.set(C2X, 0.6, C2Z + 3); C2.hits = 0; C2.knockCd = 0;
+  bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null;
+  CL.pos.set(C2X + 1.6, 1.8, C2Z - 1); CL.goal.copy(CL.pos);
+  lanternFlame.material.color.set(0x3a2f55); lanternBeam.visible = false;
+  if (C2.home) { scene.remove(C2.home); C2.home = null; }
+  if (!C2.glooms.length) for (let i = 0; i < 5; i++) C2.glooms.push({ ...makeGloomlet(), pos: new THREE.Vector3(), vel: new THREE.Vector3(), hop: 1, alive: true, squash: 0 });
+  C2.glooms.forEach((g, i) => { g.pos.set(C2X + (i - 2) * 3.5, 0.5, C2Z - 14 - (i % 2) * 5); g.vel.set(0, 0, 0); g.alive = true; g.root.visible = true; g.hop = 0.5 + i * 0.3; });
+  if (!C2.bat) C2.bat = makeSparkBat();
+  C2.bat.alive = false; C2.bat.root.visible = false;
+  sfx(200, 1200, 0.6, 'sine', 0.25); banner('CHAPTER 2', 'THE SHATTERED SPIRE', 3, '#ffd447');
+  C2.state = 'intro';
+  c2Say(['Welcome to the Shattered Spire!', 'This tower held the last lantern of Darkbound. The Eye sent its Gloomlets to snuff it out.', 'They\'re bouncy little blobs. Slap them to pop them! Five of them are in the courtyard.'], () => {
+    C2.state = 'glooms'; CL.goal.set(C2X, 2.6, C2Z - 12);
+  });
+}
+function popGloom(g) {
+  g.alive = false; g.root.visible = false; burst(g.root.position, 0x9b5cff);
+  sfx(600, 150, 0.15, 'square', 0.18); sfx(1200, 600, 0.1, 'triangle', 0.1, 0.05);
+  const left = C2.glooms.filter(x => x.alive).length;
+  if (left > 0) banner('POP!', left + ' LEFT', 0.9, '#9b5cff');
+  else {
+    C2.state = 'climb';
+    c2Say(['Pop pop pop! All the Gloomlets are gone!', 'Now climb the spiral steps to the top of the spire. I\'ll meet you up there.'], () => { CL.goal.set(C2X - 2, C2TOP + 1.4, C2Z - 32.5); });
+  }
+}
+function hitBat() {
+  const b = C2.bat; if (!b.alive || b.flash > 0) return;
+  b.flash = 0.6; C2.hits++; b.mode = 'up'; sfx(220, 60, 0.2, 'square', 0.3); burst(b.pos, 0x5ef2ff);
+  for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 90);
+  if (C2.hits < 5) { banner('HIT ' + C2.hits + ' / 5', '', 0.9, '#5ef2ff'); return; }
+  b.alive = false; b.root.visible = false; sfx(80, 30, 1, 'sawtooth', 0.25);
+  C2.state = 'light'; banner('SPARK BAT DEFEATED', '', 2, '#6dff9a');
+  c2Say(['You did it! That bat is done.', 'Quick, touch the lantern to light it!']);
+}
+function knock(from, k = 2.5) { // a gentle shove (no damage in story mode)
+  if (C2.knockCd > 0) return; C2.knockCd = 0.6;
+  _bw.copy(myPose.h).sub(from); _bw.y = 0; if (_bw.lengthSq() > 1e-6) vel.addScaledVector(_bw.normalize(), k); vel.y += 1.2;
+  sfx(300, 120, 0.15, 'sawtooth', 0.15); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.6, 60);
+}
+function c2Action() { // desktop: E / F slaps whatever is close
+  if (!inC2(myPose.h)) return;
+  for (const g of C2.glooms) if (g.alive && myPose.h.distanceTo(g.root.position) < 1.6) { popGloom(g); return; }
+  if (C2.bat?.alive && myPose.h.distanceTo(C2.bat.pos) < 1.8) hitBat();
+}
+addEventListener('keydown', e => { if (e.code === 'KeyE' || e.code === 'KeyF') c2Action(); });
+const _c2t = new THREE.Vector3();
+function updateC2(dt, t) {
+  const h = myPose.h;
+  C2.knockCd -= dt;
+  if (C2.entry) { C2.entry.rotation.y += dt * 0.6; C2.entry.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15; if (storyTouch(C2.entry.position, 1.0)) startC2(); }
+  if (C2.home) { C2.home.rotation.y += dt * 0.6; if (storyTouch(C2.home.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); } }
+  if (!inC2(h)) return;
+  if (rig.position.y < -8) { teleport(C2.check.x, C2.check.y, C2.check.z); banner('WHOOPS!', 'CLAUDE CAUGHT YOU', 1.5, '#ffb070'); }
+  // hand slaps (VR)
+  const swings = [];
+  hands.forEach((hh, i) => { if (!hh.source || !renderer.xr.isPresenting) return; const sp = hh.last.distanceTo(C2.prev[i]) / Math.max(dt, 1e-3); C2.prev[i].copy(hh.last); if (sp > 1.0) swings.push(hh.last); });
+  // Gloomlets hop toward you
+  for (const g of C2.glooms) {
+    if (!g.alive) continue;
+    const onGround = g.pos.y <= 0.5 + 1e-3;
+    if (onGround && C2.state === 'glooms') {
+      g.hop -= dt;
+      if (g.hop <= 0) {
+        _c2t.copy(h).sub(g.pos); _c2t.y = 0; const d = _c2t.length();
+        if (d > 0.01) _c2t.multiplyScalar(Math.min(2.2, d * 1.5) / d);
+        if (d > 14) _c2t.set((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
+        g.vel.set(_c2t.x, 3 + Math.random(), _c2t.z); g.hop = 0.9 + Math.random() * 0.7; g.squash = 0.3;
+        sfx(180 + Math.random() * 60, 320, 0.08, 'sine', 0.06);
+      }
+    }
+    g.vel.y -= G * dt; g.pos.addScaledVector(g.vel, dt);
+    if (g.pos.y < 0.5) { if (g.vel.y < -2) g.squash = 0.35; g.pos.y = 0.5; g.vel.set(0, 0, 0); }
+    g.pos.x = Math.max(C2X - 10.3, Math.min(C2X + 10.3, g.pos.x)); g.pos.z = Math.max(C2Z - 26.3, Math.min(C2Z - 5.5, g.pos.z));
+    g.squash = Math.max(0, g.squash - dt * 2.5);
+    g.root.position.set(g.pos.x, g.pos.y + 0.26, g.pos.z);
+    g.root.scale.set(0.32 * (1 + g.squash), 0.32 * (1 - g.squash), 0.32 * (1 + g.squash));
+    g.root.rotation.y = Math.atan2(h.x - g.pos.x, h.z - g.pos.z);
+    if (swings.some(p => p.distanceTo(g.root.position) < 0.55)) { popGloom(g); continue; }
+    if (C2.state === 'glooms' && h.distanceTo(g.root.position) < 0.55 + 0.3) knock(g.root.position);
+  }
+  // Spark Bat guards the top
+  if (C2.state === 'climb' && h.y > C2TOP && Math.hypot(h.x - C2X, h.z - (C2Z - 34)) < 3.3) {
+    C2.state = 'bat'; C2.check.set(C2X + 1.6, C2TOP + 0.1, C2Z - 32.2);
+    const b = C2.bat; b.pos.set(C2X, C2TOP + 4, C2Z - 34); b.mode = 'orbit'; b.t = 4; b.alive = true; b.root.visible = true;
+    banner('SPARK BAT', 'MINI-BOSS', 2.2, '#5ef2ff'); sfx(900, 300, 0.4, 'sawtooth', 0.15);
+    c2Say(['Uh oh. A Spark Bat! It guards the lantern.', renderer.xr.isPresenting ? 'When it dives at you, slap it! Five good hits should do it.' : 'When it dives at you, press E to slap it! Five good hits should do it.']);
+  }
+  const b = C2.bat;
+  if (b && b.alive) {
+    b.flash = Math.max(0, b.flash - dt); b.t -= dt;
+    if (b.mode === 'orbit') { b.ang += dt * 0.9; b.target.set(C2X + Math.cos(b.ang) * 4, C2TOP + 2.8, C2Z - 34 + Math.sin(b.ang) * 4); b.pos.lerp(b.target, 1 - Math.exp(-3 * dt)); if (b.t <= 0) { b.mode = 'dive'; b.target.copy(h); sfx(1400, 500, 0.3, 'sawtooth', 0.1); } }
+    else if (b.mode === 'dive') { _c2t.copy(b.target).sub(b.pos); const d = _c2t.length(); if (d < 0.25) { b.mode = 'linger'; b.t = 1.1; } else b.pos.addScaledVector(_c2t, Math.min(1, 7 * dt / d)); }
+    else if (b.mode === 'linger') { b.pos.y += Math.sin(t * 10) * 0.01; if (b.t <= 0) b.mode = 'up'; }
+    else if (b.mode === 'up') { b.target.set(b.pos.x, C2TOP + 2.8, b.pos.z); b.pos.lerp(b.target, 1 - Math.exp(-3 * dt)); if (Math.abs(b.pos.y - b.target.y) < 0.2) { b.mode = 'orbit'; b.t = 2 + Math.random() * 1.5; b.ang = Math.atan2(b.pos.z - (C2Z - 34), b.pos.x - C2X); } }
+    if ((b.mode === 'dive' || b.mode === 'linger') && h.distanceTo(b.pos) < 0.45) { knock(b.pos, 3); b.mode = 'up'; }
+    if (swings.some(p => p.distanceTo(b.pos) < 0.6)) hitBat();
+    b.root.position.copy(b.pos); b.root.lookAt(h);
+    b.wings.forEach((w, i) => { w.rotation.y = (i ? 1 : -1) * Math.sin(t * 14) * 0.7; });
+    b.mat.emissiveIntensity = 0.4 + b.flash * 2;
+  }
+  // relight the lantern
+  if (C2.state === 'light' && storyTouch(_c2t.set(C2X, C2TOP + 0.8, C2Z - 34), 1.1)) {
+    C2.state = 'lit'; lanternFlame.material.color.set(0xfff1a8); lanternBeam.visible = true; burst(_c2t, 0xffe08a);
+    [523, 659, 784, 1047, 1319].forEach((f, i) => sfx(f, f, 0.3, 'triangle', 0.16, i * 0.1));
+    c2Say(['Look at that! The Spire\'s lantern is shining again!', 'Every lantern we light makes the Eye a little weaker...', '...but I think it noticed us. That\'s a story for Chapter 3.', 'This portal takes you home. Great job, gorilla!'], () => {
+      C2.home = storyPortal(C2X + 1.8, C2TOP + 1.3, C2Z - 31.8, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
+      C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { }
+      banner('CHAPTER 2 COMPLETE', 'TO BE CONTINUED', 3.5, '#6dff9a');
+    });
+  }
+  if (C2.state === 'lit') { lanternFlame.scale.setScalar(1 + Math.sin(t * 9) * 0.12); lanternBeam.material.opacity = 0.2 + Math.sin(t * 2) * 0.06; }
+}
+
+window.__boss = { startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -1939,7 +2120,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
