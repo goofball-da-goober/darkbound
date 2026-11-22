@@ -40,7 +40,7 @@
   • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
   • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
-  • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude<br>
+  • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
   <hr>
   <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute, <b>V</b> camera view, <b>G</b> camera mode (shoulder / selfie / orbit / boss), <b>P</b> photo, <b>E</b> or click: summon a boss at a statue / hit the boss
@@ -269,6 +269,13 @@ for (let i = 0; i < 12; i++) {                                                  
   addBox(C2X + Math.sin(a) * 3.6, top - 0.4, C2Z - 34 + Math.cos(a) * 3.6, 2.2, 0.4, 2.2, COL.gold, EDGE.gold);
 }
 addBox(C2X, C2TOP - 0.4, C2Z - 34, 6, 0.4, 6, COL.stoneHi, EDGE.pink);                       // top of the spire
+
+// --- STORY CHAPTER 2.5: the Lantern Camp (west, far past the border) ---
+const B3X = -170, B3Z = 0;
+addBox(B3X, 0, B3Z, 24, 0.5, 24, COL.stoneHi, EDGE.gold);                                   // camp ground
+for (const [x, z, sx, sz] of [[0, -12, 24, 0.4], [-12, 0, 0.4, 24], [12, 0, 0.4, 24], [-7.5, 12, 9, 0.4], [7.5, 12, 9, 0.4]])
+  addBox(B3X + x, 0.5, B3Z + z, sx, 0.8, sz, COL.trunk, EDGE.pink);                           // low log fence, gate to the south
+for (const [x, z] of [[-6, -6], [6, -7], [-7, 5]]) addBox(B3X + x, 0.5, B3Z + z, 0.5, 0.5, 0.5, COL.trunk, EDGE.pink); // stumps to sit on
 
 buildMeshes();
 
@@ -1713,30 +1720,46 @@ function renderSpectator(t) {
 
 // ================= STORY MODE + CLAUDE (your guide) =================
 // Jump into the Rift fountain in the lobby → you fall into the Hollow. Claude shows you around.
-function makeClaudeModel() { // a friendly floating light-keeper: round, warm, big eyes, a glowing lantern bulb on top
-  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-  const warm = toon(0xff9a5c, 0.3), belly = toon(0xffd2a8, 0.25), deep = toon(0x9c4a2a, 0.1);
-  const glow = new THREE.MeshBasicMaterial({ color: 0xffe08a });
-  part(body, S(0.35, 28, 20), warm, null, [1, 0.95, 0.95], 0.015);
-  part(body, S(0.2), belly, [0, -0.1, 0.24], [1.1, 1, 0.5], 0.008);
+function makeMonkey(body, o) { // a toon monkey: round head, heart-shaped face, big ears, curly tail. Face points +z.
+  const k = o.k || 1, fur = toon(o.fur, 0.28), face = toon(o.face, 0.25), dark = toon(o.dark ?? 0x3a1f1a, 0.1);
+  const V = (x, y, z) => new THREE.Vector3(x * k, y * k, z * k);
+  part(body, S(0.2 * k, 18, 14), fur, [0, -0.3 * k, -0.02 * k], [1, 1.05, 0.9], 0.012);          // body
+  part(body, S(0.13 * k), face, [0, -0.3 * k, 0.1 * k], [1, 1.1, 0.6], 0.008);                    // belly
+  part(body, S(0.24 * k, 24, 18), fur, null, [1.05, 0.98, 0.95], 0.014);                          // head
+  for (const s of [-1, 1]) part(body, S(0.1 * k, 14, 10), face, [s * 0.075 * k, 0.03 * k, 0.15 * k], [1, 1.1, 0.7], 0); // face mask (two lobes)
+  part(body, S(0.12 * k, 16, 12), face, [0, -0.07 * k, 0.16 * k], [1.15, 0.8, 0.75], 0.008);     // muzzle
+  for (const s of [-1, 1]) {
+    part(body, S(0.08 * k, 12, 10), fur, [s * 0.25 * k, 0.03 * k, 0], [0.5, 1, 1], 0.008);         // ears
+    part(body, S(0.05 * k, 10, 8), face, [s * 0.27 * k, 0.03 * k, 0.015 * k], [0.35, 0.8, 0.8], 0);
+    part(body, S(0.012 * k, 6, 4), dark, [s * 0.025 * k, -0.04 * k, 0.25 * k], [1, 0.7, 0.6], 0); // nostrils
+  }
   const eyes = [-1, 1].map(s => {
-    const e = part(body, S(0.085, 16, 12), B_WHITE, [s * 0.12, 0.07, 0.29], [1, 1.2, 0.6], 0.008);
-    const p = new THREE.Mesh(S(0.045, 12, 8), B_PUPIL); p.position.z = 0.06; e.add(p);
-    const sh = new THREE.Mesh(S(0.015, 6, 4), B_WHITE); sh.position.set(-0.02, 0.025, 0.1); e.add(sh);
+    const e = part(body, S(0.055 * k, 14, 10), B_WHITE, [s * 0.075 * k, 0.045 * k, 0.215 * k], [1, 1.2, 0.6], 0.006);
+    const p = new THREE.Mesh(S(0.032 * k, 10, 8), B_PUPIL); p.position.z = 0.035 * k; p.userData.z = 0.035 * k; e.add(p);
+    const sh = new THREE.Mesh(S(0.01 * k, 6, 4), B_WHITE); sh.position.set(-0.012 * k, 0.015 * k, 0.065 * k); e.add(sh);
     return p;
   });
-  for (const s of [-1, 1]) part(body, S(0.04, 10, 8), toon(0xff6f8a, 0.3), [s * 0.22, -0.04, 0.25], [1.2, 0.7, 0.5], 0); // cheeks
-  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16, Math.PI), deep); smile.rotation.z = Math.PI; smile.position.set(0, -0.04, 0.33); body.add(smile);
-  part(body, new THREE.CylinderGeometry(0.012, 0.018, 0.2, 8), deep, [0, 0.42, 0], null, 0.006);          // antenna stalk
-  const bulb = new THREE.Mesh(S(0.06, 14, 10), glow); bulb.position.y = 0.55; body.add(bulb);              // lantern bulb
-  const bulbHalo = new THREE.Mesh(S(0.13, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
-  bulbHalo.position.y = 0.55; body.add(bulbHalo);
-  const hands = [-1, 1].map(s => { const h = part(root, S(0.07, 12, 10), warm, [s * 0.45, -0.1, 0.1], null, 0.008); return h; });
+  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.045 * k, 0.009 * k, 6, 14, Math.PI), dark); smile.rotation.z = Math.PI; smile.position.set(0, -0.095 * k, 0.245 * k); body.add(smile);
+  const cheekM = toon(0xff6f8a, 0.3), cheeks = [-1, 1].map(s => part(body, S(0.03 * k, 8, 6), cheekM, [s * 0.14 * k, -0.045 * k, 0.19 * k], [1.2, 0.7, 0.5], 0));
+  const hands = [-1, 1].map(s => {
+    part(body, new THREE.CylinderGeometry(0.035 * k, 0.04 * k, 0.22 * k, 8), fur, [s * 0.2 * k, -0.36 * k, 0.02 * k], null, 0.006).rotation.z = s * 0.35;
+    const h = part(body, S(0.05 * k, 10, 8), face, [s * 0.24 * k, -0.48 * k, 0.05 * k], null, 0.006); h.userData.y0 = h.position.y; return h;
+  });
+  const tail = new THREE.CatmullRomCurve3([V(0, -0.42, -0.15), V(0.08, -0.52, -0.3), V(0.2, -0.38, -0.4), V(0.24, -0.18, -0.34), V(0.15, -0.1, -0.26)]);
+  part(body, new THREE.TubeGeometry(tail, 20, 0.025 * k, 8), fur, null, null, 0.006);
+  return { eyes, smile, cheekM, cheeks, hands, k };
+}
+function makeClaudeModel() { // Claude: a warm-orange monkey light-keeper with a glowing lantern bulb on top, riding a hover ring
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const m = makeMonkey(body, { fur: 0xff9a5c, face: 0xffd9b8, dark: 0x6a2a18, k: 1.25 });
+  part(body, new THREE.CylinderGeometry(0.012, 0.018, 0.2, 8), toon(0x9c4a2a, 0.1), [0, 0.38, 0], null, 0.006);          // antenna stalk
+  const bulb = new THREE.Mesh(S(0.06, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffe08a })); bulb.position.y = 0.5; body.add(bulb);
+  const halo = new THREE.Mesh(S(0.13, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.y = 0.5; body.add(halo);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 8, 32), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
-  ring.rotation.x = Math.PI / 2; ring.position.y = -0.48; root.add(ring);                                  // hover ring
-  const aura = new THREE.Mesh(S(0.6, 18, 12), new THREE.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
-  root.add(aura);
-  return { root, body, eyes, hands, ring, bulb, smile };
+  ring.rotation.x = Math.PI / 2; ring.position.y = -0.7; root.add(ring);                                                     // hover ring
+  const aura = new THREE.Mesh(S(0.6, 18, 12), new THREE.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
+  aura.position.y = -0.15; root.add(aura);
+  return { root, body, eyes: m.eyes, hands: m.hands, ring, bulb, smile: m.smile, cheekM: m.cheekM, cheeks: m.cheeks };
 }
 const claude = makeClaudeModel(); scene.add(claude.root);
 const CL = { pos: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), goal: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), yaw: 0, talk: 0 };
@@ -1749,11 +1772,13 @@ const bubTex = new THREE.CanvasTexture(bubCv); bubTex.colorSpace = THREE.SRGBCol
 const bubM = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshBasicMaterial({ map: bubTex, transparent: true, depthWrite: false })); bubM.visible = false; scene.add(bubM);
 function drawBubble(text) {
   const c = bubCv.getContext('2d'); c.clearRect(0, 0, 1024, 384);
-  c.fillStyle = 'rgba(255,248,238,0.96)'; c.strokeStyle = '#ff9a5c'; c.lineWidth = 10;
+  const col = STORY.spkCol || '#ff9a5c';
+  c.fillStyle = 'rgba(255,248,238,0.96)'; c.strokeStyle = col; c.lineWidth = 10;
   c.beginPath(); c.roundRect(10, 10, 1004, 320, 40); c.fill(); c.stroke();
   c.beginPath(); c.moveTo(470, 326); c.lineTo(512, 376); c.lineTo(554, 326); c.closePath(); c.fill();
-  c.fillStyle = '#2a1640'; c.font = 'bold 46px monospace'; c.textBaseline = 'top';
-  const words = text.split(' '); let line = '', y = 40;
+  c.textBaseline = 'top'; c.fillStyle = col; c.font = 'bold 34px monospace'; c.fillText(STORY.spkName || 'CLAUDE', 42, 26);
+  c.fillStyle = '#2a1640'; c.font = 'bold 44px monospace';
+  const words = text.split(' '); let line = '', y = 72;
   for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > 940) { c.fillText(line, 42, y); y += 58; line = w; } else line = t; }
   c.fillText(line, 42, y); bubTex.needsUpdate = true;
 }
@@ -1795,7 +1820,8 @@ function makePortal() {
 function say(lines, then) { STORY.lines = lines.slice(); STORY.then = then || null; nextLine(); }
 function nextLine() {
   if (!STORY.lines.length) { STORY.cur = ''; bubM.visible = false; const f = STORY.then; STORY.then = null; if (f) f(); return; }
-  STORY.cur = STORY.lines.shift(); STORY.shown = 0; STORY.hold = 0; bubM.visible = true; drawBubble('');
+  let ln = STORY.lines.shift(); if (typeof ln === 'string') ln = { t: ln };
+  STORY.cur = ln.t; STORY.spk = ln.s || null; STORY.spkName = ln.n || 'CLAUDE'; STORY.spkCol = ln.c || '#ff9a5c'; STORY.spkH = ln.h || 1.5; STORY.shown = 0; STORY.hold = 0; bubM.visible = true; drawBubble('');
 }
 function teleport(x, y, z, faceYaw = 0) {
   rig.position.set(x, y, z); rig.quaternion.identity(); vel.set(0, 0, 0); hist.length = 0; for (const h of hands) h.fresh = true;
@@ -1825,23 +1851,23 @@ function updateStory(dt, t) {
   // Claude: float toward the goal, bob, face you, wave while talking
   CL.pos.lerp(CL.goal, 1 - Math.exp(-1.6 * dt));
   claude.root.position.copy(CL.pos); claude.root.position.y += Math.sin(t * 2) * 0.08;
-  const want = Math.atan2(h.x - CL.pos.x, h.z - CL.pos.z); let d = want - CL.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+  const lookP = CL.lookAt || h, want = Math.atan2(lookP.x - CL.pos.x, lookP.z - CL.pos.z); let d = want - CL.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   CL.yaw += d * (1 - Math.exp(-4 * dt)); claude.root.rotation.y = CL.yaw;
   claude.body.rotation.z = Math.sin(t * 1.3) * 0.06;
   const talking = !!STORY.cur && STORY.shown < STORY.cur.length;
-  claude.hands[0].position.y = -0.1 + (talking ? Math.abs(Math.sin(t * 8)) * 0.15 : Math.sin(t * 2) * 0.03);
-  claude.hands[1].position.y = -0.1 + (talking ? Math.abs(Math.cos(t * 7)) * 0.1 : Math.cos(t * 2) * 0.03);
+  claude.hands[0].position.y = claude.hands[0].userData.y0 + 0.6 * (talking ? Math.abs(Math.sin(t * 8)) * 0.15 : Math.sin(t * 2) * 0.03);
+  claude.hands[1].position.y = claude.hands[1].userData.y0 + 0.6 * (talking ? Math.abs(Math.cos(t * 7)) * 0.1 : Math.cos(t * 2) * 0.03);
   claude.smile.scale.y = talking ? 1 + Math.abs(Math.sin(t * 18)) * 1.2 : 1;
   claude.bulb.scale.setScalar(1 + Math.sin(t * 3) * 0.15);
-  claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(h)).normalize();
-  for (const p of claude.eyes) p.position.set(_clLook.x * 0.035, _clLook.y * 0.03, 0.06);
+  claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(lookP)).normalize();
+  for (const p of claude.eyes) p.position.set(_clLook.x * 0.02, _clLook.y * 0.018, p.userData.z);
   clTagM.position.copy(claude.root.position); clTagM.position.y += 0.82; clTagM.lookAt(h);
-  bubM.position.copy(claude.root.position); bubM.position.y += 1.5; bubM.lookAt(h);
+  const spk = STORY.spk || claude.root; bubM.position.copy(spk.position); bubM.position.y += STORY.spk ? STORY.spkH : 1.5; bubM.lookAt(h);
   // typing the current line
   if (STORY.cur) {
     if (STORY.shown < STORY.cur.length) {
       const before = Math.floor(STORY.shown); STORY.shown = Math.min(STORY.cur.length, STORY.shown + dt * 38);
-      if (Math.floor(STORY.shown) !== before) { drawBubble(STORY.cur.slice(0, Math.floor(STORY.shown))); if (before % 3 === 0 && here) sfx(700 + Math.random() * 300, 500, 0.04, 'triangle', 0.04); }
+      if (Math.floor(STORY.shown) !== before) { drawBubble(STORY.cur.slice(0, Math.floor(STORY.shown))); if (before % 3 === 0) sfx(700 + Math.random() * 300, 500, 0.04, 'triangle', 0.04); }
     } else if ((STORY.hold += dt) > 1.8 + STORY.cur.length * 0.035) nextLine();
   }
   // shards spin and bob
@@ -2034,16 +2060,181 @@ function updateC2(dt, t) {
   if (C2.state === 'light' && storyTouch(_c2t.set(C2X, C2TOP + 0.8, C2Z - 34), 1.1)) {
     C2.state = 'lit'; lanternFlame.material.color.set(0xfff1a8); lanternBeam.visible = true; burst(_c2t, 0xffe08a);
     [523, 659, 784, 1047, 1319].forEach((f, i) => sfx(f, f, 0.3, 'triangle', 0.16, i * 0.1));
-    c2Say(['Look at that! The Spire\'s lantern is shining again!', 'Every lantern we light makes the Eye a little weaker...', '...but I think it noticed us. That\'s a story for Chapter 3.', 'This portal takes you home. Great job, gorilla!'], () => {
+    c2Say(['Look at that! The Spire\'s lantern is shining again!', 'Every lantern we light makes the Eye a little weaker...', '...but I think it noticed us. That\'s a story for Chapter 3.', 'And look: a pink portal just opened. Chapter 2.5, the Lantern Camp. Some friends want to meet you!', 'The blue one takes you home. Great job, gorilla!'], () => {
       C2.home = storyPortal(C2X + 1.8, C2TOP + 1.3, C2Z - 31.8, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
-      C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { }
+      C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { } showCampEntries();
       banner('CHAPTER 2 COMPLETE', 'TO BE CONTINUED', 3.5, '#6dff9a');
     });
   }
   if (C2.state === 'lit') { lanternFlame.scale.setScalar(1 + Math.sin(t * 9) * 0.12); lanternBeam.material.opacity = 0.2 + Math.sin(t * 2) * 0.06; }
 }
 
-window.__boss = { startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= STORY CHAPTER 2.5: THE LANTERN CAMP =================
+// Unlocks after Chapter 2. Meet the people who escaped the dark... and Dory. Claude has a crush. It's a secret!
+const B3 = { state: 'idle', done: false, entries: [], home: null, tell: null, npcs: [], dory: null, heartT: 0, blush: 0, cd: 0 };
+try { B3.done = localStorage.getItem('darkbound-story-25') === 'done'; } catch (e) { }
+const inCamp = p => Math.abs(p.x - B3X) < 16 && Math.abs(p.z - B3Z) < 16;
+// ---- the camp: campfire, tents, flower lanterns (no collision, just looks) ----
+const campfire = new THREE.Group(); campfire.position.set(B3X, 0.5, B3Z - 1); scene.add(campfire);
+for (let i = 0; i < 4; i++) { const l = part(campfire, new THREE.CylinderGeometry(0.08, 0.08, 0.9, 8), toon(0x5a2a1a, 0.15), [0, 0.12, 0], null, 0.01); l.rotation.set(Math.PI / 2, i * Math.PI / 4, 0); }
+const flameM = new THREE.MeshBasicMaterial({ color: 0xffb347 }), flameM2 = new THREE.MeshBasicMaterial({ color: 0xfff1a8 });
+const flames = [part(campfire, new THREE.ConeGeometry(0.28, 0.8, 10), flameM, [0, 0.5, 0], null, 0), part(campfire, new THREE.ConeGeometry(0.15, 0.5, 8), flameM2, [0, 0.45, 0], null, 0)];
+const fireGlow = new THREE.Mesh(S(1.4, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })); fireGlow.position.y = 0.5; campfire.add(fireGlow);
+for (const [x, z, col] of [[-8, -8, 0x9b5cff], [8, -8, 0x5ef2ff], [-8, 8.5, 0xff5c8a]]) {
+  const t = part(scene, new THREE.ConeGeometry(1.6, 2.2, 4), toon(col, 0.2), [B3X + x, 1.6, B3Z + z], null, 0.02); t.rotation.y = Math.PI / 4;
+  part(scene, new THREE.PlaneGeometry(0.7, 1.1), new THREE.MeshBasicMaterial({ color: 0x0b0418 }), [B3X + x, 1.05, B3Z + z + (z < 0 ? 1.15 : -1.15)], null, 0).rotation.y = z < 0 ? 0 : Math.PI;
+}
+for (const [x, z] of [[-10, 10], [10, 10], [-10, -10], [10, -10], [0, -10.5]]) { // flower lanterns on poles
+  part(scene, new THREE.CylinderGeometry(0.04, 0.05, 1.8, 8), toon(0x3a1426, 0.1), [B3X + x, 1.4, B3Z + z], null, 0.01);
+  part(scene, new THREE.ConeGeometry(0.2, 0.3, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xff9ad5, side: THREE.DoubleSide }), [B3X + x, 2.35, B3Z + z], null, 0).rotation.x = Math.PI;
+  part(scene, S(0.09, 10, 8), glow3(0xfff1a8), [B3X + x, 2.3, B3Z + z], null, 0);
+}
+function glow3(c) { return new THREE.MeshBasicMaterial({ color: c }); }
+// ---- new characters (all made for Darkbound) ----
+function faceEyes(parent, z, spread, r, lashes) {
+  return [-1, 1].map(s => {
+    const e = part(parent, S(r, 14, 10), B_WHITE, [s * spread, 0.05, z], [1, 1.2, 0.6], 0.008);
+    const p = new THREE.Mesh(S(r * 0.55, 10, 8), B_PUPIL); p.position.z = r * 0.7; e.add(p);
+    const sh = new THREE.Mesh(S(r * 0.18, 6, 4), B_WHITE); sh.position.set(-r * 0.25, r * 0.3, r * 1.15); e.add(sh);
+    if (lashes) for (let i = 0; i < 3; i++) { const l = part(parent, new THREE.BoxGeometry(0.012, 0.05, 0.012), B_PUPIL, [s * spread + s * (0.02 + i * 0.025), 0.05 + r * 1.2, z + 0.01], null, 0); l.rotation.z = -s * (0.3 + i * 0.35); }
+    return p;
+  });
+}
+function npcRoot(x, y, z) { const r = new THREE.Group(), body = new THREE.Group(); r.add(body); r.position.set(B3X + x, y, B3Z + z); scene.add(r); return { root: r, body, home: r.position.clone() }; }
+function makePip() { // tiny moth kid
+  const o = npcRoot(-4.5, 1.2, -2); const fuzz = toon(0xfff3f8, 0.3), pink = new THREE.MeshBasicMaterial({ color: 0xffb3d9, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+  part(o.body, S(0.2, 16, 12), fuzz, null, null, 0.01); part(o.body, S(0.13, 12, 10), fuzz, [0, -0.2, -0.03], [1, 1.2, 1], 0.008);
+  o.eyes = faceEyes(o.body, 0.15, 0.08, 0.06, false);
+  for (const s of [-1, 1]) {
+    const a = part(o.body, new THREE.CylinderGeometry(0.008, 0.01, 0.22, 6), toon(0x5a3a5a), [s * 0.06, 0.25, 0.05], null, 0); a.rotation.z = -s * 0.4;
+    part(o.body, S(0.03, 8, 6), glow3(0xffe08a), [s * 0.11, 0.35, 0.05], null, 0);
+    const w = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16), pink); w.position.set(s * 0.22, 0.05, -0.08); w.scale.set(1, 1.3, 1); o.body.add(w); (o.wings ||= []).push(w);
+  }
+  return Object.assign(o, { name: 'PIP', col: '#ff9ad5', h: 0.75, met: false, lines: ['Hi hi hi! You\'re the gorilla! Everybody\'s talking about you!', 'When the dark came, I hid in a lantern for THREE days. It was cozy, actually.'] });
+}
+function makeGrumble() { // sleepy old rock
+  const o = npcRoot(4.5, 0.95, -3); const rock = toon(0x6a5a64, 0.12); rock.flatShading = true; const moss = toon(0x4f8a4a, 0.2);
+  part(o.body, new THREE.DodecahedronGeometry(0.45, 0), rock, null, [1.15, 0.9, 1], 0.02);
+  part(o.body, S(0.38, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), moss, [0, 0.18, 0], [1.1, 0.6, 1.0], 0.01);
+  o.eyes = faceEyes(o.body, 0.38, 0.15, 0.07, false);
+  for (const s of [-1, 1]) part(o.body, new THREE.BoxGeometry(0.17, 0.05, 0.05), toon(0x4a3f48), [s * 0.15, 0.12, 0.44], null, 0); // sleepy lids
+  for (let i = 0; i < 5; i++) part(o.body, S(0.07, 8, 6), moss, [(-2 + i) * 0.07, -0.22 - (i % 2) * 0.05, 0.4], null, 0.006); // mossy beard
+  return Object.assign(o, { name: 'GRUMBLE', col: '#8fbf7a', h: 1.1, met: false, lines: ['Hrmm. A gorilla. In MY camp. ...Fine. Sit by the fire.', 'I\'ve been a rock for nine hundred years. The dark is new. I don\'t like new.'] });
+}
+function makeNova() { // tinkerer robot
+  const o = npcRoot(0, 1.0, -6.5); const teal = toon(0x2fa8a0, 0.2), metal = toon(0x3b4a5a, 0.12);
+  part(o.body, new THREE.CylinderGeometry(0.22, 0.26, 0.5, 16), teal, null, null, 0.012); part(o.body, S(0.22, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), teal, [0, 0.25, 0], null, 0.012);
+  part(o.body, new THREE.TorusGeometry(0.12, 0.035, 8, 20), metal, [0, 0.18, 0.2], null, 0.008);
+  part(o.body, new THREE.CircleGeometry(0.1, 20), glow3(0x9ff6ff), [0, 0.18, 0.225], null, 0); o.eyes = [];
+  part(o.body, new THREE.CylinderGeometry(0.01, 0.01, 0.25, 6), metal, [0.1, 0.55, 0], null, 0);
+  part(o.body, new THREE.ConeGeometry(0.1, 0.06, 16, 1, true), toon(0xd0d8e0, 0.2), [0.1, 0.7, 0], null, 0).rotation.x = Math.PI;
+  for (const s of [-1, 1]) part(o.body, S(0.06, 10, 8), metal, [s * 0.3, -0.05, 0.05], null, 0.008);
+  return Object.assign(o, { name: 'NOVA', col: '#5ef2ff', h: 1.2, met: false, lines: ['Greetings! I built every lantern pole in this camp. Well, most. Okay, two.', 'If you find any spare gears out there, bring them to me. For science!'] });
+}
+function makeDory() { // Dory: a lavender monkey who keeps the flower lanterns
+  const o = npcRoot(-13, 4, -13);
+  const m = makeMonkey(o.body, { fur: 0xc9a7ff, face: 0xf6e9ff, dark: 0x4a2a6a, k: 1.05 }); o.eyes = m.eyes;
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) { // eyelashes
+    const l = part(o.body, new THREE.BoxGeometry(0.008, 0.035, 0.008), B_PUPIL, [s * (0.1 + i * 0.016), 0.115 - i * 0.008, 0.215], null, 0); l.rotation.z = -s * (0.35 + i * 0.35);
+  }
+  for (const [x, y] of [[-0.11, -0.02], [-0.135, -0.04], [0.11, -0.02], [0.135, -0.04]]) part(o.body, S(0.007, 4, 3), toon(0x9a6ac0), [x, y, 0.215], null, 0); // freckles
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; part(o.body, S(0.04, 8, 6), toon(i % 2 ? 0xffd447 : 0xff7aa8, 0.4), [Math.cos(a) * 0.19, 0.21, Math.sin(a) * 0.17], null, 0.005); } // flower crown
+  const lamp = new THREE.Group(); lamp.position.set(0.26, -0.47, 0.08); o.body.add(lamp);                // flower lantern in her right hand
+  part(lamp, new THREE.CylinderGeometry(0.008, 0.008, 0.32, 6), toon(0x4f8a4a), [0, 0.12, 0], null, 0);
+  part(lamp, new THREE.ConeGeometry(0.08, 0.12, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xff9ad5, side: THREE.DoubleSide }), [0, 0.32, 0], null, 0).rotation.x = Math.PI;
+  part(lamp, S(0.04, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1a8 }), [0, 0.3, 0], null, 0);
+  o.root.visible = false;
+  return Object.assign(o, { name: 'DORY', col: '#c99bff', h: 0.9, spot: new THREE.Vector3(B3X - 2.2, 1.06, B3Z - 4.5) });
+}
+// floating hearts over Claude when Dory is near
+const heartCv = document.createElement('canvas'); heartCv.width = heartCv.height = 64;
+{ const c = heartCv.getContext('2d'); c.fillStyle = '#ff5c8a'; c.beginPath(); c.moveTo(32, 56); c.bezierCurveTo(4, 36, 6, 8, 32, 20); c.bezierCurveTo(58, 8, 60, 36, 32, 56); c.fill(); }
+const heartTex = new THREE.CanvasTexture(heartCv); heartTex.colorSpace = THREE.SRGBColorSpace;
+const hearts = Array.from({ length: 10 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.14), new THREE.MeshBasicMaterial({ map: heartTex, transparent: true, depthWrite: false })); m.visible = false; scene.add(m); return { m, t: 0 }; });
+function puffHeart() { const hh = hearts.find(x => !x.m.visible); if (!hh) return; hh.t = 0; hh.m.visible = true; hh.m.position.copy(claude.root.position).add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.45, (Math.random() - 0.5) * 0.4)); }
+const CLAUDE_C = { n: 'CLAUDE', c: '#ff9a5c' };
+const doryL = t => ({ t, s: B3.dory.root, n: 'DORY', c: '#c99bff', h: 0.95 });
+function showCampEntries() {
+  if (B3.entries.length) return;
+  B3.entries.push(storyPortal(SX + 3.2, 1.4, SZ - 1.5, 'CHAPTER 2.5', 'THE LANTERN CAMP', 0xff9ad5));
+  B3.entries.push(storyPortal(C2X - 1.8, C2TOP + 1.3, C2Z - 31.8, 'CHAPTER 2.5', 'THE LANTERN CAMP', 0xff9ad5));
+}
+if (C2.done) showCampEntries();
+function startCamp() {
+  teleport(B3X, 0.6, B3Z + 9); bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null;
+  CL.pos.set(B3X + 1.5, 1.8, B3Z + 7); CL.goal.copy(CL.pos); CL.lookAt = null; B3.blush = 0;
+  if (!B3.npcs.length) { B3.npcs = [makePip(), makeGrumble(), makeNova()]; B3.dory = makeDory(); }
+  for (const n of B3.npcs) n.met = false;
+  B3.dory.root.visible = false; B3.dory.root.position.set(B3X - 13, 4, B3Z - 13);
+  if (B3.home) { scene.remove(B3.home); B3.home = null; } if (B3.tell) { scene.remove(B3.tell); B3.tell = null; }
+  sfx(200, 1200, 0.6, 'sine', 0.25); banner('CHAPTER 2.5', 'THE LANTERN CAMP', 3, '#ff9ad5');
+  B3.state = 'intro';
+  say(['This is the Lantern Camp! Everyone who escaped the dark lives here now.', 'Go say hi! Just walk up to someone to talk.'], () => { B3.state = 'meet'; CL.goal.set(B3X + 2, 1.9, B3Z + 1); });
+}
+function doryArrives() {
+  B3.state = 'dory'; B3.dory.root.visible = true; sfx(880, 1320, 0.5, 'sine', 0.15); sfx(1320, 1760, 0.5, 'sine', 0.1, 0.25);
+  CL.goal.set(B3X + 1.2, 1.9, B3Z - 2.5);
+  say([
+    { t: 'Oh! Oh no. Oh hi. That\'s... that\'s Dory.', ...CLAUDE_C },
+    doryL('Hi there! You must be the gorilla who lit the Spire\'s lantern!'),
+    doryL('I\'m Dory. I keep the flower lanterns. Thank you for bringing the light back.'),
+    doryL('Claude, you\'re all pink. Are you okay?'),
+    { t: 'Me? Pink? No! It\'s... the campfire. Very warm. Haha. Ha.', ...CLAUDE_C },
+    doryL('Okay! I\'ll be by the fire if you need me.'),
+  ], () => {
+    B3.state = 'secret'; CL.lookAt = null; CL.goal.copy(myPose.h).add(new THREE.Vector3(0.9, 0.3, 0.6));
+    say(['Psst. Gorilla. Come here.', 'Can you keep a secret?', 'I... kind of have a crush on Dory.', 'You can\'t tell her! Not yet. Promise?', 'Some day I\'ll tell her myself. But not in this chapter.'], () => {
+      banner('SECRET: CLAUDE ♥ DORY', 'YOU PROMISED NOT TO TELL', 3.5, '#ff5c8a');
+      B3.state = 'free'; B3.done = true; try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
+      B3.tell = storyPortal(B3X - 2.2, 1.0, B3Z - 3.1, 'TELL DORY?', 'LOCKED: YOU PROMISED', 0xff5c8a); B3.tell.scale.setScalar(0.45);
+      B3.home = storyPortal(B3X + 3, 1.4, B3Z + 9, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
+      CL.goal.set(B3X + 1.2, 1.9, B3Z - 2.5);
+    });
+  });
+}
+const _campV = new THREE.Vector3();
+function updateCamp(dt, t) {
+  const h = myPose.h;
+  for (const e of B3.entries) { e.rotation.y += dt * 0.6; e.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15; if (storyTouch(e.position, 1.0)) startCamp(); }
+  if (!inCamp(h)) return;
+  B3.cd -= dt;
+  flames[0].scale.set(1 + Math.sin(t * 11) * 0.12, 1 + Math.sin(t * 7) * 0.2, 1); flames[1].scale.y = 1 + Math.sin(t * 13) * 0.25; fireGlow.material.opacity = 0.1 + Math.sin(t * 9) * 0.03;
+  for (const n of B3.npcs) { // idle: bob, look at you, Pip flaps
+    n.root.position.y = n.home.y + Math.sin(t * 2 + n.home.x) * 0.05;
+    n.root.rotation.y = Math.atan2(h.x - n.root.position.x, h.z - n.root.position.z);
+    if (n.wings) n.wings.forEach((w, i) => { w.rotation.y = (i ? -1 : 1) * Math.sin(t * 16) * 0.6; });
+    if (B3.state === 'meet' && !n.met && !STORY.cur && Math.hypot(h.x - n.root.position.x, h.z - n.root.position.z) < 2.2) {
+      n.met = true; say(n.lines.map(l => ({ t: l, s: n.root, n: n.name, c: n.col, h: n.h })), () => {
+        const left = B3.npcs.filter(x => !x.met).length;
+        if (left) say([left === 1 ? 'One more person to meet!' : 'Go meet the others too!']); else setTimeout(doryArrives, 1200);
+      });
+    }
+  }
+  const d = B3.dory;
+  if (d && d.root.visible) { // Dory floats in, then hovers by the fire
+    d.root.position.lerp(d.spot, 1 - Math.exp(-1.2 * dt)); d.root.position.y += Math.sin(t * 1.8) * 0.004;
+    d.root.rotation.y = Math.atan2(h.x - d.root.position.x, h.z - d.root.position.z);
+    d.body.rotation.z = Math.sin(t * 1.4) * 0.08;
+    // Claude gets flustered near Dory
+    const near = claude.root.position.distanceTo(d.root.position) < 4.5 && B3.state !== 'secret';
+    B3.blush += ((near ? 1 : 0) - B3.blush) * (1 - Math.exp(-2 * dt));
+    CL.lookAt = near && B3.state === 'dory' ? d.root.position : null;
+    if (near && (B3.heartT -= dt) <= 0) { B3.heartT = 0.45; puffHeart(); }
+  } else B3.blush += (0 - B3.blush) * (1 - Math.exp(-2 * dt));
+  claude.cheekM.emissiveIntensity = 0.3 + B3.blush * 1.6; claude.cheeks.forEach(c => c.scale.set(1.2 + B3.blush * 0.8, 0.7 + B3.blush * 0.4, 0.5));
+  for (const hh of hearts) if (hh.m.visible) { hh.t += dt; hh.m.position.y += dt * 0.35; hh.m.position.x += Math.sin(hh.t * 5) * 0.004; hh.m.lookAt(h); hh.m.material.opacity = Math.max(0, 1 - hh.t / 1.6); if (hh.t > 1.6) hh.m.visible = false; }
+  if (B3.tell) {
+    B3.tell.rotation.y += dt;
+    if (B3.cd <= 0 && storyTouch(B3.tell.position, 0.6)) {
+      B3.cd = 6; banner('LOCKED', 'YOU PROMISED CLAUDE', 2, '#ff5c8a'); sfx(200, 120, 0.3, 'square', 0.15);
+      say([{ t: 'NOOO! You promised! Not yet!', ...CLAUDE_C }, doryL('Hm? Did somebody say something?'), { t: 'Nope! Nothing! Lovely weather! In the dark!', ...CLAUDE_C }]);
+    }
+  }
+  if (B3.home) { B3.home.rotation.y += dt * 0.6; if (storyTouch(B3.home.position, 1.0)) { teleport(SPAWN.x, SPAWN.y, SPAWN.z); STORY.cd = 3; bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null; banner('BACK IN THE LOBBY', '', 1.8, '#5ef2ff'); sfx(1200, 200, 0.5, 'sine', 0.2); } }
+  if (rig.position.y < -8) teleport(B3X, 0.6, B3Z + 9);
+}
+
+window.__boss = { startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -2120,7 +2311,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
   else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
