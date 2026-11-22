@@ -58,7 +58,8 @@ const VERSION = 'ALPHA 0.1', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) 
 const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
-const FEET_R = 0.3;       // body/feet sphere
+const FEET_R = 0.3;       // (old body sphere, no longer used for walls)
+const FOOT_R = 0.15;      // small floor probe under you: stands you on things, never pushes you off walls
 const JUMP_MULT = 1.2;    // release velocity multiplier
 const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
@@ -348,8 +349,9 @@ function resolveBody() {
   for (let i = 0; i < 2; i++) {
     headWorld(_h); _p.copy(_h);
     if (pushOut(_p, HEAD_R)) { _p.sub(_h); rig.position.add(_p); bodyPush.add(_p); }
-    headWorld(_h); _p.set(_h.x, rig.position.y + FEET_R, _h.z); _f.copy(_p);
-    if (pushOut(_p, FEET_R)) { _p.sub(_f); rig.position.add(_p); bodyPush.add(_p); }
+    // feet: only hold you UP on what's under you; never shove you sideways off walls (only head + hands bump walls, like Gorilla Tag)
+    headWorld(_h); _p.set(_h.x, rig.position.y + FOOT_R, _h.z); _f.copy(_p);
+    if (pushOut(_p, FOOT_R)) { _p.sub(_f); if (_p.y > 0 && _p.y > 0.7 * _p.length()) { _p.x = 0; _p.z = 0; rig.position.add(_p); bodyPush.add(_p); } }
   }
   return bodyPush;
 }
@@ -760,6 +762,20 @@ const livCam = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 400);
 const livRT = new THREE.WebGLRenderTarget(512, 288); livRT.texture.colorSpace = THREE.SRGBColorSpace;
 const livScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.079), new THREE.MeshBasicMaterial({ map: livRT.texture }));
 livScreen.position.set(0, 0.004, 0.0615); livObj.add(livScreen);
+livObj.scale.setScalar(1.4); // bigger, easier to spot and grab
+// flip-out screen on the side, facing the same way as the lens: you can watch yourself while holding it selfie-style
+{
+  const flip = new THREE.Group(); flip.position.set(0.09, 0.005, -0.03); livObj.add(flip);
+  part(flip, new THREE.BoxGeometry(0.11, 0.066, 0.008), toon(0x1b1530), [0.055, 0, 0], null, 0.004);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.056), new THREE.MeshBasicMaterial({ map: livRT.texture }));
+  scr.position.set(0.055, 0, -0.0045); scr.rotation.y = Math.PI; flip.add(scr);
+}
+// "DARK CAM" tag floating above it so you can find it
+const livTagCv = document.createElement('canvas'); livTagCv.width = 256; livTagCv.height = 64;
+{ const c = livTagCv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,0.85)'; c.fillRect(0, 0, 256, 64); c.strokeStyle = '#9b5cff'; c.lineWidth = 5; c.strokeRect(3, 3, 250, 58); c.fillStyle = '#5ef2ff'; c.font = 'bold 34px monospace'; c.textAlign = 'center'; c.fillText('DARK CAM', 128, 44); }
+const livTagTex = new THREE.CanvasTexture(livTagCv); livTagTex.colorSpace = THREE.SRGBColorSpace;
+const livTag = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.04), new THREE.MeshBasicMaterial({ map: livTagTex, transparent: true }));
+livTag.position.set(0, 0.1, 0); livObj.add(livTag);
 // screen overlay: REC dot, mode and timer, like a real viewfinder
 const livHudCv = document.createElement('canvas'); livHudCv.width = 256; livHudCv.height = 144;
 const livHudTex = new THREE.CanvasTexture(livHudCv); livHudTex.colorSpace = THREE.SRGBColorSpace;
@@ -854,6 +870,7 @@ function updateLiv(dt) {
   const fov = CAM_FOV[liv.mode === 'boss' && !bp ? 'shoulder' : liv.mode];
   if (Math.abs(livCam.fov - fov) > 0.05) { livCam.fov += (fov - livCam.fov) * (1 - Math.exp(-4 * dt)); livCam.updateProjectionMatrix(); }
   livCam.position.copy(livObj.position); livCam.quaternion.copy(livObj.quaternion);
+  livTag.lookAt(myPose.h); livTag.visible = liv.mode !== 'held';
   livObj.userData.rec.visible = Math.floor(performance.now() / 600) % 2 === 0;
   liv.hudT += dt; if (liv.hudT > 0.5) { liv.hudT = 0; drawLivHud(); }
   const ch = document.getElementById('camHud'); const show = liv.view && !renderer.xr.isPresenting;
@@ -1878,7 +1895,7 @@ if (navigator.xr) {
   }).catch(() => { });
   navigator.xr.addEventListener?.('sessiongranted', enterVR);
 }
-renderer.xr.addEventListener('sessionstart', () => { vrStart.hidden = true; });
+renderer.xr.addEventListener('sessionstart', () => { vrStart.hidden = true; setTimeout(() => banner('DARK CAM', 'CLICK A THUMBSTICK TO HOLD IT • A = CAMERA MODE', 5, '#5ef2ff'), 2500); });
 renderer.xr.addEventListener('sessionend', () => { if (navigator.xr) vrStart.hidden = false; });
 
 
@@ -1902,13 +1919,14 @@ function updateDbg(dt) {
     'head ' + (camera.position.y * PLAYER_SCALE).toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
     'fall ' + vel.y.toFixed(2) + '   space ' + (renderer.xr.getReferenceSpace() ? 'ok' : 'NONE'),
     'L ' + hs(L), 'R ' + hs(R),
+    'cam: click a stick to hold it',
     dbg.errs.length ? 'ERR ' + dbg.errs[dbg.errs.length - 1] : 'no errors',
   ];
   const c = dbgCv.getContext('2d');
   c.clearRect(0, 0, 512, 256); c.fillStyle = 'rgba(7,4,15,0.85)'; c.fillRect(0, 0, 512, 256);
   c.strokeStyle = '#5ef2ff'; c.lineWidth = 4; c.strokeRect(2, 2, 508, 252);
-  c.font = 'bold 30px monospace';
-  lines.forEach((l, i) => { c.fillStyle = l.startsWith('ERR') ? '#ff5c8a' : i ? '#e8dcff' : '#ffd447'; c.fillText(l, 14, 38 + i * 40); });
+  c.font = 'bold 27px monospace';
+  lines.forEach((l, i) => { c.fillStyle = l.startsWith('ERR') ? '#ff5c8a' : i ? '#e8dcff' : '#ffd447'; c.fillText(l, 14, 34 + i * 34); });
   dbgTex.needsUpdate = true;
 }
 
