@@ -329,6 +329,13 @@ addBox(MX + 3, 0, MZ + 27.5, 1, 0.4, 1, COL.gold, EDGE.cyan);                   
 // Escape Gate (north edge)
 addBox(MX - 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX + 2.6, 0, MZ - 31.6, 0.8, 4.5, 0.8, DWW, 0xff5c8a); addBox(MX, 4.5, MZ - 31.6, 6, 0.6, 0.8, DWW, 0xff5c8a);
 
+// --- THE LIGHT WORLD: where every game starts (far north, bright and suspiciously happy) ---
+const LX = 0, LZ = -330;
+addBox(LX, -0.5, LZ, 18, 0.5, 18, 0xf4eeff, EDGE.cyan);                                          // soft white floor
+for (const [x, z, sx, sz, c] of [[0, -9, 18, 0.5, 0xffd6ea], [0, 9, 18, 0.5, 0xd6efff], [-9, 0, 0.5, 18, 0xfff2c2], [9, 0, 0.5, 18, 0xd8ffe4]]) addBox(LX + x, 0, LZ + z, sx, 0.8, sz, c, EDGE.cyan);
+for (const [x, z, h, c] of [[-5.5, -5.5, 2.2, 0xffc2dd], [5.5, -5.5, 3, 0xbfe6ff], [-5.5, 5.5, 2.6, 0xffeaa8], [5.5, 5.5, 1.8, 0xc4ffd6]]) addBox(LX + x, 0, LZ + z, 1.4, h, 1.4, c, EDGE.cyan); // pastel blocks to climb
+addBox(LX, 0, LZ - 4.6, 1.3, 0.55, 0.9, 0x24222e, EDGE.cyan);                                    // the dark desk (it doesn't belong here)
+
 buildMeshes();
 
 // --- the Rift: a pillar of light with rising sparks ---
@@ -510,7 +517,7 @@ function onTouch(h, speed) {
 
 // ================= RESPAWN / TURN =================
 function respawn() {
-  rig.position.copy(SPAWN); rig.quaternion.identity();
+  if (INTRO.active) rig.position.set(LX, 0.3, LZ + 5); else rig.position.copy(SPAWN); // the game starts in the Light World rig.quaternion.identity();
   vel.set(0, 0, 0); hist.length = 0;
   for (const h of hands) h.fresh = true;
 }
@@ -677,11 +684,31 @@ function limb(parent, r0, r1, mat) {
   o.scale.set(k, k, 1); m.add(o); parent.add(m); return m;
 }
 function stretch(m, a, b) { m.position.copy(a); m.lookAt(b); m.scale.set(1, 1, Math.max(0.001, a.distanceTo(b))); }
+// curl the fingers: grip curls middle/ring/pinky, trigger curls the pointer, thumb bends when it rests on the buttons
+function poseHand(g, grip, trig, thumb) {
+  const H = g.userData.hand; if (!H) return;
+  H.fingers.forEach((f, i) => { const c = i === H.index ? trig : grip; f.f1.rotation.x = -0.15 - c * 1.35; f.f2.rotation.x = -0.1 - c * 1.3; });
+  H.thumb.rotation.x = -thumb * 0.9; H.t2.rotation.x = -thumb * 0.9;
+}
 function makeHand(parent, side, palm, skinDark, fur) {
   const g = new THREE.Group(); parent.add(g);
-  part(g, S(0.055), palm, [0, 0, -0.01], [1.2, 0.85, 1.35]);                                   // big dark fist: the main shape you see
-  for (let i = 0; i < 4; i++) part(g, S(0.02, 12, 8), skinDark, [-0.039 + i * 0.026, 0.026, -0.05], [1, 0.9, 1.2], 0.008); // knuckles on top
-  part(g, S(0.024, 12, 8), skinDark, [-side * 0.06, -0.004, -0.02], [1, 1, 1.3], 0.008);        // thumb
+  part(g, S(0.055), palm, [0, 0, -0.005], [1.2, 0.75, 1.15], 0.008);                               // palm
+  const segGeo1 = new THREE.CylinderGeometry(0.0115, 0.013, 0.036, 8).rotateX(Math.PI / 2).translate(0, 0, -0.018);
+  const segGeo2 = new THREE.CylinderGeometry(0.0095, 0.0115, 0.03, 8).rotateX(Math.PI / 2).translate(0, 0, -0.015);
+  const fingers = [];
+  for (let i = 0; i < 4; i++) { // four fingers along the front of the palm, each with 2 joints
+    const f1 = new THREE.Group(); f1.position.set(-0.039 + i * 0.026, 0.008, -0.058); g.add(f1);
+    part(f1, S(0.0135, 8, 6), skinDark, null, null, 0.004);                                                // knuckle
+    part(f1, segGeo1, skinDark, null, null, 0.004);
+    const f2 = new THREE.Group(); f2.position.z = -0.036; f1.add(f2);
+    part(f2, segGeo2, skinDark, null, null, 0.004); part(f2, S(0.0105, 8, 6), skinDark, [0, 0, -0.03], null, 0.003); // fingertip
+    fingers.push({ f1, f2 });
+  }
+  const thumb = new THREE.Group(); thumb.position.set(-side * 0.055, -0.006, -0.02); thumb.rotation.y = side * 0.6; g.add(thumb);
+  part(thumb, segGeo1, skinDark, null, null, 0.004);
+  const t2 = new THREE.Group(); t2.position.z = -0.036; thumb.add(t2); part(t2, segGeo2, skinDark, null, null, 0.004);
+  g.userData.hand = { fingers, thumb, t2, index: side > 0 ? 0 : 3, side };
+  poseHand(g, 0.35, 0.35, 0.2);
   part(g, S(0.04), fur, [0, 0.006, 0.058], [1.1, 1, 0.7]);                                      // small furry wrist cuff
   g.scale.setScalar(1.5); // big gorilla mitts (Gorilla Tag style), easy to see in VR
   return g;
@@ -792,6 +819,7 @@ function makeGorilla(color) {
     setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
+    setFingers(l, r) { poseHand(arms[0].hand, l[0], l[1], l[2]); poseHand(arms[1].hand, r[0], r[1], r[2]); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p, dt = 1 / 60) {
       head.position.copy(p.h); head.quaternion.copy(p.q);
@@ -845,6 +873,7 @@ function applyState(d) {
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
   if (d.kf) r.kf = d.kf; r.color = d.c;
   if (d.c !== undefined && d.c !== r.fur) { if (r.fur !== undefined) r.g.setColor(d.c); r.fur = d.c; }
+  if (Array.isArray(d.fg) && d.fg.length === 6) r.g.setFingers(d.fg.slice(0, 3), d.fg.slice(3));
   if (typeof d.mf === 'string') r.mf = d.mf.split(',').filter(f => MON_FORMS.includes(f));
   if (typeof d.nm === 'string' && (d.nm !== r.nm || d.lv !== r.lv)) { r.nm = d.nm; r.lv = d.lv; if (!(GM.monster === d.id && GM.form === 'shape')) r.g.setName(tagFor(r)); }
   if (typeof d.ht === 'string' && d.ht !== r.hat) { r.hat = d.ht; r.g.setHat(d.ht || null); }
@@ -891,6 +920,8 @@ function updateMyPose(t, dt) {
     myPose.l.copy(L.last); L.grip.getWorldQuaternion(myPose.lq);
     myPose.r.copy(R.last); R.grip.getWorldQuaternion(myPose.rq);
     me.setTouch(L.coll, R.coll);
+    const fv = h => { const b = h.source?.gamepad?.buttons || []; return [b[1]?.value || 0, b[0]?.value || 0, (b[3]?.touched || b[4]?.touched || b[5]?.touched) ? 1 : 0]; };
+    myPose.fg = [...fv(L), ...fv(R)]; me.setFingers(myPose.fg.slice(0, 3), myPose.fg.slice(3));
   } else { // knuckle-walk animation
     const spd = Math.min(1, Math.hypot(vel.x, vel.z) / 6), sw = Math.sin(t * 7) * spd;
     _q.setFromAxisAngle(_up, yaw);
@@ -898,6 +929,7 @@ function updateMyPose(t, dt) {
     myPose.r.set(0.34, -0.72 + Math.max(0, -sw) * 0.12, -0.3 - sw * 0.25).applyQuaternion(_q).add(myPose.h);
     myPose.lq.copy(_q); myPose.rq.copy(_q);
     me.setTouch(false, false);
+    myPose.fg = [1, 1, 1, 1, 1, 1]; me.setFingers([1, 1, 1], [1, 1, 1]); // knuckle-walking fists
   }
   me.root.visible = !!(xr || thirdPerson);
   me.head.visible = !xr && thirdPerson > 0;
@@ -1089,7 +1121,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '', nm: SET.name || '', lv: myLevel, mf: myForms().join(',') };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '', nm: SET.name || '', lv: myLevel, fg: (myPose.fg || [0.35, 0.35, 0.2, 0.35, 0.35, 0.2]).map(v => +v.toFixed(1)), mf: myForms().join(',') };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -1922,7 +1954,10 @@ function makeMonkey(body, o) { // a toon monkey: round head, heart-shaped face, 
   const cheekM = toon(0xff6f8a, 0.3), cheeks = [-1, 1].map(s => part(body, S(0.03 * k, 8, 6), cheekM, [s * 0.14 * k, -0.045 * k, 0.19 * k], [1.2, 0.7, 0.5], 0));
   const hands = [-1, 1].map(s => {
     part(body, new THREE.CylinderGeometry(0.035 * k, 0.04 * k, 0.22 * k, 8), fur, [s * 0.2 * k, -0.36 * k, 0.02 * k], null, 0.006).rotation.z = s * 0.35;
-    const h = part(body, S(0.05 * k, 10, 8), face, [s * 0.24 * k, -0.48 * k, 0.05 * k], null, 0.006); h.userData.y0 = h.position.y; return h;
+    const h = part(body, S(0.05 * k, 10, 8), face, [s * 0.24 * k, -0.48 * k, 0.05 * k], null, 0.006);
+    for (let i = 0; i < 4; i++) part(h, new THREE.CapsuleGeometry(0.011 * k, 0.035 * k, 3, 6), face, [(-1.5 + i) * 0.022 * k, -0.04 * k, 0.03 * k], null, 0.003).rotation.x = 0.4; // little monkey fingers
+    part(h, new THREE.CapsuleGeometry(0.012 * k, 0.025 * k, 3, 6), face, [-s * 0.045 * k, -0.01 * k, 0.03 * k], null, 0.003).rotation.z = s * 0.9; // thumb
+    h.userData.y0 = h.position.y; return h;
   });
   const tail = new THREE.CatmullRomCurve3([V(0, -0.42, -0.15), V(0.08, -0.52, -0.3), V(0.2, -0.38, -0.4), V(0.24, -0.18, -0.34), V(0.15, -0.1, -0.26)]);
   part(body, new THREE.TubeGeometry(tail, 20, 0.025 * k, 8), fur, null, null, 0.006);
@@ -3324,7 +3359,7 @@ function hostLongarm(dt, alive) {
 const randFur = () => new THREE.Color().setHSL(Math.random(), 0.7 + Math.random() * 0.25, 0.45 + Math.random() * 0.2).getHex();
 const lobbySpot = out => { const a = Math.random() * Math.PI * 2, r = 3.8 + Math.random() * 6; return out.set(Math.cos(a) * r, 0, Math.sin(a) * r); };
 const BOTS = Array.from({ length: 5 }, (_, i) => {
-  const g = makeGorilla(randFur()); g.setName('LVL ???'); g.setRobot(new THREE.Color().setHSL(Math.random(), 1, 0.6).getHex());
+  const g = makeGorilla(randFur()); g.setName('LVL ???'); g.setFingers([1, 1, 1], [1, 1, 1]); g.setRobot(new THREE.Color().setHSL(Math.random(), 1, 0.6).getHex());
   const b = { id: 'bot' + i, g, pose: mkPose(), pos: new THREE.Vector3(), target: new THREE.Vector3(), ground: 0, yaw: Math.random() * 6, t: Math.random() * 3, hop: 0, hopV: 0, walk: 0, mode: 'lobby', glow: null };
   lobbySpot(b.pos); b.target.copy(b.pos); return b;
 });
@@ -3589,7 +3624,81 @@ function updateLobby(dt, t) {
   }
 }
 
-window.__boss = { monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= INTRO: the Light World → jump into the weird computer → white → the REAL logo → 2.9 s → BOOM =================
+const INTRO = { active: !SPECTATE, phase: 'play', t: 0, humT: 0, scrT: 0 };
+// the fake logo (cheerful, wrong)
+{
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 400; const c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 1024, 400); g.addColorStop(0, '#ffe3f1'); g.addColorStop(1, '#dff3ff'); c.fillStyle = g; c.fillRect(0, 0, 1024, 400);
+  c.strokeStyle = '#ffb3d6'; c.lineWidth = 14; c.strokeRect(7, 7, 1010, 386);
+  c.fillStyle = '#ffd447'; c.beginPath(); c.arc(140, 200, 80, 0, 7); c.fill();                       // a happy sun
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; c.fillRect(140 + Math.cos(a) * 100 - 6, 200 + Math.sin(a) * 100 - 6, 12, 12); }
+  c.fillStyle = '#7a5cff'; c.font = '120px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText('LIGHTBOUND', 600, 230);
+  c.fillStyle = '#ff7ab8'; c.font = '40px "Lilita One", system-ui, sans-serif'; c.fillText('a happy happy game :)', 600, 300);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 2.35), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(LX, 3.3, LZ - 8.7); scene.add(m);
+}
+// the weird glowing computer (old, dark, full of static)
+const weird = new THREE.Group(); weird.position.set(LX, 0.55, LZ - 4.6); scene.add(weird);
+part(weird, new THREE.BoxGeometry(0.95, 0.8, 0.75), toon(0x2a2833, 0.05), [0, 0.4, 0], null, 0.012);
+const wCv = document.createElement('canvas'); wCv.width = 160; wCv.height = 120; const wTex = new THREE.CanvasTexture(wCv); wTex.magFilter = THREE.NearestFilter;
+const wScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.56), new THREE.MeshBasicMaterial({ map: wTex })); wScreen.position.set(0, 0.42, 0.38); weird.add(wScreen);
+const wGlow = new THREE.Mesh(S(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })); wGlow.position.set(0, 0.42, 0.2); weird.add(wGlow);
+const WEIRD_MSG = ['JUMP IN', 'COME CLOSER', '?', 'IT IS DARK IN HERE', 'JUMP IN'];
+function drawWeird(t) {
+  const c = wCv.getContext('2d'), img = c.createImageData(160, 120);
+  for (let i = 0; i < img.data.length; i += 4) { const v = Math.random() * 140; img.data[i] = v * 0.7; img.data[i + 1] = v * 0.6; img.data[i + 2] = v; img.data[i + 3] = 255; }
+  c.putImageData(img, 0, 0);
+  if (Math.sin(t * 1.7) > 0.2) { c.fillStyle = '#ff2a4a'; c.font = '20px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText(WEIRD_MSG[Math.floor(t / 2) % WEIRD_MSG.length], 80 + (Math.random() - 0.5) * 4, 66); }
+  wTex.needsUpdate = true;
+}
+// the white fade + the real logo: a full-screen overlay on a PC/phone, panels on your face in VR
+const introEl = document.createElement('div');
+introEl.style.cssText = 'position:fixed;inset:0;z-index:30;background:#fff;opacity:0;pointer-events:none;display:flex;align-items:center;justify-content:center';
+introEl.innerHTML = '<img src="logo.png" alt="Darkbound" style="width:min(640px,80vw);opacity:0;border-radius:10px">';
+document.body.appendChild(introEl); const introImg = introEl.querySelector('img');
+const fadeVR = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthTest: false, fog: false }));
+fadeVR.position.z = -0.2; fadeVR.renderOrder = 2000; fadeVR.visible = false; camera.add(fadeVR); camHide.push(fadeVR);
+const logoTex = new THREE.TextureLoader().load('logo.png'); logoTex.colorSpace = THREE.SRGBColorSpace;
+const logoVR = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.2), new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, opacity: 0, depthTest: false, fog: false }));
+logoVR.position.z = -0.19; logoVR.renderOrder = 2001; logoVR.visible = false; camera.add(logoVR); camHide.push(logoVR);
+// bright light-world sky
+const lwFog = new THREE.FogExp2(0xf6f0ff, 0.035), lwBg = new THREE.Color(0xf6f0ff);
+function setLightWorld(on) {
+  scene.fog = on ? lwFog : lightFog; scene.background = on ? lwBg : lightBg;
+  if (hemi) hemi.intensity = on ? 1.9 : 1.2; sun.intensity = on ? 1.3 : 1.0;
+  skyStuff ||= scene.children.filter(o => o.userData.sky || o.isPoints || o === beam || o === core || o === floaters || o === beacon || o === skyEye.root);
+  for (const o of skyStuff) o.visible = !on;
+}
+function setIntroFade(white, logo) {
+  introEl.style.opacity = white; introImg.style.opacity = logo;
+  const xr = renderer.xr.isPresenting; fadeVR.visible = xr && white > 0; logoVR.visible = xr && logo > 0;
+  fadeVR.material.opacity = white; logoVR.material.opacity = logo;
+}
+if (INTRO.active) { teleport(LX, 0.3, LZ + 5, 0); setLightWorld(true); }
+function updateIntro(dt, t) {
+  if (!INTRO.active) return;
+  INTRO.t += dt;
+  if ((INTRO.scrT -= dt) <= 0) { INTRO.scrT = 0.08; drawWeird(t); }
+  wGlow.material.opacity = 0.14 + Math.sin(t * 3) * 0.06 + Math.random() * 0.04; wGlow.scale.setScalar(1 + Math.sin(t * 2) * 0.08);
+  if (INTRO.phase === 'play') {
+    if (Math.abs(rig.position.z - LZ) > 20 || Math.abs(rig.position.x - LX) > 20) teleport(LX, 0.3, LZ + 5, 0); // stay in the Light World until you jump in
+    wScreen.getWorldPosition(_gw);
+    const d = Math.min(myPose.h.distanceTo(_gw), myPose.l.distanceTo(_gw) + 0.3, myPose.r.distanceTo(_gw) + 0.3);
+    if (d < 3 && (INTRO.humT -= dt) <= 0) { INTRO.humT = 0.6; sfx(55 + Math.random() * 10, 50, 0.6, 'sawtooth', 0.04 * (1 - d / 3)); }
+    if (d < 0.8) { INTRO.phase = 'fade'; INTRO.t = 0; sfx(200, 1400, 1.0, 'sine', 0.2); sfx(60, 30, 1.2, 'sawtooth', 0.12); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.6, 400); }
+  } else if (INTRO.phase === 'fade') { setIntroFade(Math.min(1, INTRO.t / 1.0), 0); if (INTRO.t >= 1.0) { INTRO.phase = 'logo'; INTRO.t = 0; } }
+  else if (INTRO.phase === 'logo') {
+    setIntroFade(1, Math.min(1, INTRO.t / 0.4));
+    if (INTRO.t >= 0.4 + 2.9) { // BOOM
+      INTRO.phase = 'out'; INTRO.t = 0; sfx(70, 25, 1.4, 'sawtooth', 0.5); sfx(45, 20, 1.6, 'sine', 0.6); slapSound && actx && slapSound(1, true);
+      for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 500);
+      setLightWorld(false); teleport(SPAWN.x, SPAWN.y, SPAWN.z, 0);
+    }
+  } else if (INTRO.phase === 'out') { const k = Math.max(0, 1 - INTRO.t / 0.7); setIntroFade(k, k); if (k <= 0) { INTRO.active = false; setIntroFade(0, 0); } }
+}
+
+window.__boss = { INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -3671,7 +3780,7 @@ renderer.setAnimationLoop(() => {
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
   updateWind(Math.hypot(vel.x, vel.y, vel.z));
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateGrab(dt, t); updateSB(dt); updateLobby(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateGrab(dt, t); updateSB(dt); updateLobby(dt, t); updateIntro(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
