@@ -153,17 +153,25 @@ function buildMeshes() {
   scene.fog.color.set(0x2a1a3c); // far things fade into the horizon colour
 }
 
-// --- spawn plaza + the Rift ---
-addBox(0, 0, 0, 12, 0.25, 12, COL.stoneHi, EDGE.cyan);
-for (const [x, z, sx, sz] of [[0, -2.2, 4.7, 0.3], [0, 2.2, 4.7, 0.3], [-2.2, 0, 0.3, 4.1], [2.2, 0, 0.3, 4.1]])
-  addBox(x, 0.25, z, sx, 0.6, sz, COL.stone, EDGE.cyan);
-// ring of climbable pillars
-const pillarH = [3, 5, 4, 7, 3.5, 6, 4.5, 5.5];
-for (let i = 0; i < 8; i++) {
-  const a = i / 8 * Math.PI * 2 + Math.PI / 8, x = Math.cos(a) * 9, z = Math.sin(a) * 9;
-  addBox(x, 0, z, 1.3, pillarH[i], 1.3, COL.stone, EDGE.violet);
-  addBox(x, pillarH[i], z, 1.9, 0.3, 1.9, COL.stoneHi, EDGE.cyan);
+// --- THE LOBBY: a stone courtyard with the Rift fountain in the middle, four arches, four climbing towers ---
+addBox(0, 0, 0, 28, 0.15, 20, COL.stoneHi, EDGE.cyan);                                     // courtyard floor (a cross: soft octagon)
+addBox(0, 0, 0, 20, 0.15, 28, COL.stoneHi, EDGE.cyan);
+addBox(0, 0.15, 0, 9, 0.04, 9, COL.stone, EDGE.cyan);                                       // inner ring tiles
+for (const [x, z, sx, sz] of [[0, -2.6, 5.6, 0.4], [0, 2.6, 5.6, 0.4], [-2.6, 0, 0.4, 4.8], [2.6, 0, 0.4, 4.8]])
+  addBox(x, 0.15, z, sx, 0.7, sz, COL.gold, EDGE.gold);                                       // the fountain basin around the Rift
+for (const [x, z, sx, sz] of [[-6, -14, 8, 0.5], [6, -14, 8, 0.5], [-6, 14, 8, 0.5], [6, 14, 8, 0.5], [-14, -6, 0.5, 8], [-14, 6, 0.5, 8], [14, -6, 0.5, 8], [14, 6, 0.5, 8]])
+  addBox(x, 0.15, z, sx, 0.9, sz, COL.wall, EDGE.violet);                                     // low walls, a gap (exit) on each side
+for (const [ax, az, horiz] of [[0, -14, true], [0, 14, true], [-14, 0, false], [14, 0, false]]) { // an arch over each exit
+  const dx = horiz ? 2.4 : 0, dz = horiz ? 0 : 2.4;
+  addBox(ax - dx, 0.15, az - dz, 0.7, 3.6, 0.7, COL.stone, EDGE.violet); addBox(ax + dx, 0.15, az + dz, 0.7, 3.6, 0.7, COL.stone, EDGE.violet);
+  addBox(ax, 3.75, az, horiz ? 5.6 : 0.8, 0.5, horiz ? 0.8 : 5.6, COL.stoneHi, EDGE.violet);
 }
+for (const [x, z] of [[-10.5, -10.5], [10.5, -10.5], [-10.5, 10.5], [10.5, 10.5]]) {          // climbing towers in the corners
+  addBox(x, 0, z, 2, 6, 2, COL.stone, EDGE.violet); addBox(x, 6, z, 3, 0.35, 3, COL.stoneHi, EDGE.cyan);
+  for (let i = 0; i < 4; i++) addBox(x + (x < 0 ? 1.15 : -1.15), 1 + i * 1.25, z + (i % 2 ? 0.5 : -0.5), 0.35, 0.25, 0.8, COL.gold, EDGE.gold); // grab ledges facing the middle
+}
+const MON_PEDS = [3.2, 4.6, 6.0, 7.4, 8.8].map(x => new THREE.Vector3(x, 0.9, 10.6));       // Monster Shop
+MON_PEDS.forEach(p => addBox(p.x, 0, p.z, 0.7, 0.9, 0.7, COL.stoneHi, EDGE.pink));
 
 // --- NORTH: stepped tower ---
 const tiers = [[12, 0, 4], [8.5, 4, 4], [5.5, 8, 4], [3, 12, 3]]; // size, baseY, height
@@ -218,7 +226,7 @@ function tree(x, z) {
   }
 }
 {
-  const avoid = [[-8, 8, -38, -20], [19, 45, -13, 13], [-7, 7, 14, 55], [-48, -16, -16, 16], [-12, 12, -12, 12], [18, 42, 20, 44]];
+  const avoid = [[-8, 8, -38, -20], [19, 45, -13, 13], [-7, 7, 14, 55], [-48, -16, -16, 16], [-16, 16, -16, 16], [18, 42, 20, 44]];
   const placed = [];
   for (let tries = 0; placed.length < 22 && tries < 600; tries++) {
     const x = rr(-54, 54), z = rr(-54, 54);
@@ -298,7 +306,7 @@ const HAT_PEDS = [-7.6, -6.2, -4.8, -3.4].map(x => new THREE.Vector3(x, 0.9, 10.
 HAT_PEDS.forEach(p => addBox(p.x, 0, p.z, 0.7, 0.9, 0.7, COL.gold, EDGE.gold));
 
 // --- COMPUTAH desk (east of spawn) ---
-addBox(8.6, 0, 8, 0.7, 0.4, 1.5, COL.stoneHi, EDGE.cyan);
+addBox(10.6, 0, -5, 0.7, 0.4, 1.5, COL.stoneHi, EDGE.cyan);
 
 // --- GAME MODES: the Darkwood (a dark horror maze, far south) ---
 const MX = 0, MZ = 175, DWW = 0x150b1c, DWE = 0x3d1d52, DWT = 0x1a0d12;
@@ -837,7 +845,8 @@ function applyState(d) {
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
   if (d.kf) r.kf = d.kf; r.color = d.c;
   if (d.c !== undefined && d.c !== r.fur) { if (r.fur !== undefined) r.g.setColor(d.c); r.fur = d.c; }
-  if (typeof d.nm === 'string' && d.nm !== r.nm) { r.nm = d.nm; r.g.setName(cleanName(d.nm)); }
+  if (typeof d.mf === 'string') r.mf = d.mf.split(',').filter(f => MON_FORMS.includes(f));
+  if (typeof d.nm === 'string' && (d.nm !== r.nm || d.lv !== r.lv)) { r.nm = d.nm; r.lv = d.lv; if (!(GM.monster === d.id && GM.form === 'shape')) r.g.setName(tagFor(r)); }
   if (typeof d.ht === 'string' && d.ht !== r.hat) { r.hat = d.ht; r.g.setHat(d.ht || null); }
   if (d.kp && d.kq) { (r.kp ||= new THREE.Vector3()).fromArray(d.kp); (r.kq ||= new THREE.Quaternion()).fromArray(d.kq); }
   if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
@@ -1080,7 +1089,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '', nm: SET.name || '' };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '', nm: SET.name || '', lv: myLevel, mf: myForms().join(',') };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -1274,6 +1283,10 @@ const BOSSES = [
   { id: 'warden', name: 'GLOOM WARDEN', color: 0x9b5cff, style: 'warden', hp: 900, intro: 'The Warden guards the edge of the Rift.', attacks: ['halo', 'gate', 'prism'] },
   { id: 'witch', name: 'THE PRISM WITCH', color: 0x5ef2ff, style: 'witch', hp: 750, intro: 'She splits light into blades.', attacks: ['twin', 'sniper', 'starfall'] },
   { id: 'colossus', name: 'RUST COLOSSUS', color: 0xff8a3d, style: 'colossus', hp: 1400, intro: 'A machine that forgot how to stop.', attacks: ['pinball', 'moths', 'grid'] },
+  // fan-made bosses (not in story mode): beat them for XP + levels
+  { id: 'disco', name: 'DISCO DOOM', color: 0xff5cf0, style: 'mask', hp: 1000, fan: true, intro: 'FAN BOSS! He only dances in the dark.', attacks: ['twin', 'starfall', 'halo'] },
+  { id: 'moth', name: 'MOTHER MOTH', color: 0xe6d0ff, style: 'witch', hp: 1100, fan: true, intro: 'FAN BOSS! Her babies are the bullets.', attacks: ['moths', 'sniper', 'starfall'] },
+  { id: 'jelly', name: 'THE JELLY TYRANT', color: 0x6dff8a, style: 'warden', hp: 1300, fan: true, intro: 'FAN BOSS! Wobbly, sticky and very angry.', attacks: ['pinball', 'gate', 'grid'] },
 ];
 const THE_EYE = { id: 'eye', name: 'THE EYE', unlock: EYE_VERSION }; // the O in DARKBOUND. The last boss. Wakes up in version 2.5.
 const defeated = new Set((() => { try { return JSON.parse(localStorage.getItem('darkbound-defeated') || '[]'); } catch (e) { return []; } })());
@@ -1391,7 +1404,7 @@ function labelTex(lines, w = 512, h = 128) {
     tex.needsUpdate = true;
   } };
 }
-const peds = [...BOSSES, THE_EYE].map((def, i) => {
+const peds = [...BOSSES.filter(b => b.fan), THE_EYE].map((def, i) => {
   const isEye = def.id === 'eye', fig = isEye ? makeEyeModel() : makeBossModel(def);
   fig.root.scale.setScalar(isEye ? 0.24 : 0.17); fig.root.position.copy(PED[i]); fig.root.position.y += 0.45; scene.add(fig.root);
   if (isEye) { fig.setOpen(0); for (const s of [-1, 1]) { const ch = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.62, 0.06), toon(0x6a6080, 0.2)); ch.position.copy(fig.root.position); ch.position.z -= 0.24; ch.rotation.z = s * 0.7; scene.add(ch); } }
@@ -1404,7 +1417,7 @@ function drawPeds() {
     const s = p.isEye ? 'eye' : B.def ? (B.def === p.def ? 'fighting' : 'busy') : defeated.has(p.def.id) ? 'won' : 'ready';
     if (s === p.state) continue; p.state = s;
     if (p.isEye) p.lab.draw(['THE EYE', 'SEALED... FOR NOW', '#9b5cff']);
-    else p.lab.draw([p.def.name, { fighting: 'FIGHTING!', busy: 'WAIT YOUR TURN', won: 'DEFEATED ✓ TOUCH TO REMATCH', ready: 'TOUCH TO SUMMON' }[s], s === 'won' ? '#6dff9a' : '#ffd447']);
+    else p.lab.draw([p.def.name, { fighting: 'FIGHTING!', busy: 'WAIT YOUR TURN', won: 'DEFEATED ✓ TOUCH TO REMATCH', ready: (p.def.fan ? 'FAN BOSS • ' : '') + 'TOUCH TO SUMMON' }[s], s === 'won' ? '#6dff9a' : '#ffd447']);
   }
 }
 // arena signs
@@ -1549,7 +1562,7 @@ function damageBoss(n, local) {
 function endBoss(win) {
   if (!B.def) return;
   if (!win) { banner('THE BOSS LEFT', '', 2); clearBoss(); SB.active = 0; return; }
-  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED'); if (SB.active) storyBossWon();
+  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED'); addXP(B.def.fan ? 100 : 40, B.def.fan ? 'FAN BOSS BEATEN' : ''); if (SB.active) storyBossWon();
   B.phase = 'dead'; B.pt = 0; B.bullets = []; clearLasers();
   banner('VICTORY!', B.def.name + ' IS DEFEATED', 4, '#6dff9a');
   [523, 659, 784, 1047].forEach((f, i) => sfx(f, f, 0.35, 'triangle', 0.18, i * 0.12));
@@ -1563,7 +1576,8 @@ function trySummon(i) {
   if (p.isEye) { banner('THE EYE IS SEALED', 'IT IS NOT TIME YET...', 3.5, '#c9a36b'); eyeStare(3.5, 0.6); sfx(70, 45, 2, 'sine', 0.3); return; }
   if (B.def) { banner('A BOSS IS ALREADY HERE', '', 1.5); return; }
   for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.8, 120);
-  if (bossAuth()) startBoss(i); else { bsend({ t: 'bsum', b: i }); banner('SUMMONING…', '', 1.5); }
+  const bi = BOSSES.indexOf(p.def);
+  if (bossAuth()) startBoss(bi); else { bsend({ t: 'bsum', b: bi }); banner('SUMMONING…', '', 1.5); }
 }
 
 // ---------- bullets & lasers ----------
@@ -2001,7 +2015,7 @@ function makePortal() {
 {
   const lab = labelTex(null, 1024, 256); lab.draw(['JUMP IN THE RIFT', 'STORY MODE • MEET CLAUDE', '#ffb070']);
   const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '74px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.fillText('JUMP IN THE RIFT', 512, 120); lab.tex.needsUpdate = true;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.5, 2.45); scene.add(m);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(0, 1.45, 2.85); scene.add(m);
 }
 // dialogue
 function say(lines, then) { STORY.lines = lines.slice(); STORY.then = then || null; nextLine(); }
@@ -2529,10 +2543,10 @@ addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; l
   c.fillStyle = '#6dff9a'; c.font = '76px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
   c.fillStyle = '#ffd447'; c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillText(VERSION, 512, 165);
   c.textAlign = 'left'; c.font = '36px "Lilita One", system-ui, sans-serif';
-  ['🦍 BTM MONSTERS: Chainsaw,', '  Longreach, Shadow & Brute', '📖 STORY: Chapters 3, 4 & 5:', '  boss fights with Claude!', 'BB BOUND BUCKS: the new money', '🎨 NEW LOOK: a cartoon world', '🌲 DARKWOOD (west portal):', '  HORROR + BTM', '🤖 LVL ??? robot gorillas', '🌐 PUBLIC ROOMS like [B3ED]', '💻 COMPUTAH by spawn', '⚔ DARK BATTLES + HAT STAND']
+  ['🏰 NEW LOBBY courtyard!', '🦍 MONSTER SHOP: BB or levels', '📖 STORY: Chapters 3, 4 & 5:', '  boss fights with Claude!', 'BB BOUND BUCKS: the new money', '⭐ LEVELS: beat the FAN BOSSES', '🌲 DARKWOOD (west portal):', '  HORROR + BTM', '🤖 LVL ??? robot gorillas', '🌐 PUBLIC ROOMS like [B3ED]', '💻 COMPUTAH by spawn', '⚔ DARK BATTLES + HAT STAND']
     .forEach((l, i) => { c.fillStyle = l.startsWith(' ') ? '#cbbcf0' : '#ffffff'; c.fillText(l, 60, 250 + i * 62); });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(5.6, 1.6, 10.8); m.rotation.y = Math.PI; scene.add(m);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(-6, 1.6, -11.2); scene.add(m);
 }
 
 // ---------- Bolt Crab (new mini-boss model) ----------
@@ -2658,6 +2672,7 @@ function endBattle(result) {
   const r = BT.roam;
   if (r) { if (result === 'lose') { r.model.root.visible = true; r.cd = 6; } else { r.alive = false; r.respawn = 60; } }
   if (result === 'win' || result === 'chill') { try { localStorage.setItem('darkbound-wins', String((+localStorage.getItem('darkbound-wins') || 0) + 1)); } catch (e) { } }
+  if (result === 'win' || result === 'chill') addXP(15);
   if (result === 'win') addBananas(5, 'YOU WON THE BATTLE');
   if (result === 'chill') addBananas(8, 'YOU MADE A FRIEND (PEACE BONUS)');
   if (storyFight) { if (result === 'lose') { banner('YOU GOT BONKED', 'TRY AGAIN!', 2, '#ff3b6b'); setTimeout(() => storyFight.retry(), 2500); } else setTimeout(() => storyFight.next(), 1500); return; }
@@ -2829,7 +2844,7 @@ const cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').s
 const rgbOf = hex => { const c = new THREE.Color(hex); return [Math.round(c.r * 9), Math.round(c.g * 9), Math.round(c.b * 9)]; };
 const hexOf = ([r, g, b]) => (Math.round(r / 9 * 255) << 16) | (Math.round(g / 9 * 255) << 8) | Math.round(b / 9 * 255);
 CP.rgb = rgbOf(MY_COLOR);
-const comp = new THREE.Group(); comp.position.set(8.25, 0.4, 8); comp.rotation.y = -Math.PI / 2; scene.add(comp); // faces back toward spawn
+const comp = new THREE.Group(); comp.position.set(10.25, 0.4, -5); comp.rotation.y = -Math.PI / 2; scene.add(comp); // faces back toward spawn
 // monitor
 part(comp, new THREE.BoxGeometry(0.06, 0.32, 0.06), toon(0x2b2346, 0.1), [0, 0.16, -0.55], null, 0.006);
 part(comp, new THREE.BoxGeometry(1.08, 0.66, 0.06), toon(0x1b1530, 0.1), [0, 0.62, -0.58], null, 0.01);
@@ -2919,13 +2934,13 @@ function compKey(k) {
 }
 function compEnter(menu) {
   if (menu === 'ROOM') { if (!CP.input) CP.msg = 'TYPE A ROOM CODE FIRST'; else { switchRoom(CP.input); CP.input = ''; } }
-  else if (menu === 'NAME') { const n = cleanName(CP.input); if (!n) { CP.msg = 'TYPE A NAME FIRST'; return; } SET.name = n; saveSettings(); me.setName(n); CP.input = ''; CP.msg = 'HI, ' + n + '! NAME SAVED'; }
+  else if (menu === 'NAME') { const n = cleanName(CP.input); if (!n) { CP.msg = 'TYPE A NAME FIRST'; return; } SET.name = n; saveSettings(); me.setName(myTag()); CP.input = ''; CP.msg = 'HI, ' + n + '! NAME SAVED'; }
   else if (menu === 'COLOR') { MY_COLOR = hexOf(CP.rgb); SET.color = MY_COLOR; saveSettings(); me.setColor(MY_COLOR); CP.msg = 'COLOR SAVED. LOOKING FRESH'; }
   else if (menu === 'SAVE CODE') { if (!CP.input) CP.msg = 'TYPE A CODE FROM ANOTHER DEVICE, THEN ENTER'; else { CP.msg = loadSaveCode(CP.input); CP.input = ''; } }
 }
 function compOpt(menu, o) {
   if (menu === 'ROOM') { if (o === 1) joinPublic(); if (o === 2) { CP.input = Math.random().toString(36).slice(2, 7).toUpperCase(); CP.msg = 'PRESS ENTER TO JOIN IT'; } }
-  if (menu === 'NAME' && o === 1) { SET.name = ''; saveSettings(); me.setName(''); CP.msg = 'NAME CLEARED'; }
+  if (menu === 'NAME' && o === 1) { SET.name = ''; saveSettings(); me.setName(myTag()); CP.msg = 'NAME CLEARED'; }
   if (menu === 'COLOR') { CP.ch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'TURN') { SET.turn = ['snap30', 'snap45', 'smooth'][o - 1]; saveSettings(); CP.msg = 'SAVED'; }
   if (menu === 'MIC') { SET.mic = ['open', 'ptt', 'off'][o - 1]; saveSettings(); applyMic(); CP.msg = 'SAVED'; }
@@ -2962,7 +2977,7 @@ function drawComp() {
   compTex.needsUpdate = true;
 }
 // PC: press T near the computer to type on it with your real keyboard
-const nearComp = () => myPose.h.distanceTo(_cpv.set(8.25, 0.6, 8)) < 2.4;
+const nearComp = () => myPose.h.distanceTo(_cpv.set(10.25, 0.6, -5)) < 2.4;
 const _cpv = new THREE.Vector3();
 addEventListener('keydown', e => {
   if (!CP.typing) { if (e.code === 'KeyT' && nearComp() && !BT.active) { CP.typing = true; for (const k in keys) keys[k] = false; drawComp(); banner('TYPING ON THE COMPUTAH', 'ESC TO STOP', 1.5, '#5ef2ff'); e.stopImmediatePropagation(); } return; }
@@ -2992,7 +3007,7 @@ function updateComp(dt, t) {
   }
 }
 drawComp();
-if (SET.name) me.setName(SET.name);
+
 
 // ================= DEVICE CHECK + PHONE / TABLET CONTROLS =================
 if (DEVICE === 'mobile') setTimeout(() => banner('DEVICE: ' + DEVICE_NAME, DEVICE === 'mobile' ? 'TOUCH CONTROLS ON' : DEVICE === 'vr' ? 'VR MODE' : 'KEYBOARD + MOUSE', 2.5, '#5ef2ff'), 1200);
@@ -3134,10 +3149,11 @@ function gmStart(mode) {
   const parts = gmPlayersInDW();
   let withBots = false;
   if (mode === 'btm' && parts.length < 2) { if (remotes.size) { banner('BTM NEEDS 2+ PLAYERS IN HERE', 'GET YOUR FRIENDS INTO THE DARKWOOD', 2.5, '#ff3b6b'); return; } withBots = true; for (const b of BOTS.slice(0, 4)) parts.push(b.id); banner('THE AI GORILLAS WILL PLAY', 'YOU ARE THE MONSTER!', 2.5, '#ff3b6b'); }
-  Object.assign(GM, { held: '', heldHand: 'r', heldT: 0, rip: null, mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '', form: MON_FORMS[Math.floor(Math.random() * MON_FORMS.length)] });
+  Object.assign(GM, { held: '', heldHand: 'r', heldT: 0, rip: null, mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '', form: 'basic' });
+  { const own = GM.monster === myId ? myForms() : (remotes.get(GM.monster)?.mf?.length ? remotes.get(GM.monster).mf : ['basic']); GM.form = own[Math.floor(Math.random() * own.length)] || 'basic'; } // a form the Monster has unlocked
   { const others = GM.parts.filter(id => id !== GM.monster), pick = others[Math.floor(Math.random() * others.length)] || '';
     GM.disguise = pick.startsWith('bot') ? new THREE.Color().setHSL(Math.random(), 0.8, 0.55).getHex() : pick === myId ? MY_COLOR : remotes.get(pick)?.fur ?? PALETTE[0];
-    GM.dname = pick.startsWith('bot') ? 'LVL ???' : pick === myId ? (SET.name || '') : cleanName(remotes.get(pick)?.nm || ''); }
+    GM.dname = pick.startsWith('bot') ? 'LVL ???' : pick === myId ? myTag() : tagFor(remotes.get(pick) || {}); }
   GM.ai = { x: MX, z: MZ - 14, yaw: 0, st: 'wander' }; gmLocal.aiPos.set(MX, 0, MZ - 14);
   gmSend(); gmApply(true);
 }
@@ -3159,7 +3175,7 @@ function gmApply() {
   if (GM.phase !== gmLocal.phase) {
     const was = gmLocal.phase; gmLocal.phase = GM.phase;
     if (GM.phase === 'count' || GM.phase === 'idle') restoreAllParts(); // everyone gets their head and arms back
-    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE ' + FORM_NAME[GM.form] + '! GRAB THEM, THEN YANK TO POP' : (GM.form === 'shape' ? 'THE SHAPESHIFTER... IT LOOKS LIKE ONE OF YOU!' : 'RUN! THE MONSTER IS THE ' + FORM_NAME[GM.form])) : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
+    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE ' + FORM_NAME[GM.form] + '! GRAB THEM, THEN YANK TO POP' : 'RUN AND HIDE!') : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
     if (GM.phase === 'play' && me) {
       const sp = OPEN_CELLS[(GM.parts.indexOf(myId) * 7 + 3) % OPEN_CELLS.length];
       if (GM.mode === 'btm' && GM.monster === myId) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); banner('COUNTING TO 12...', 'THEN HUNT THEM DOWN', 3, '#ff3b6b'); }
@@ -3168,6 +3184,7 @@ function gmApply() {
     if (GM.phase === 'end') {
       banner(GM.result, '', 4, '#ff3b6b');
       if (me) { const won = GM.mode === 'horror' ? GM.escaped.includes(myId) : (GM.monster === myId ? GM.result.includes('MONSTER WINS') : !GM.caught.includes(myId));
+        if (won) addXP(40);
         if (won) addBananas(GM.mode === 'horror' ? 15 : GM.monster === myId ? 12 : 10, GM.mode === 'horror' ? 'YOU ESCAPED!' : 'YOU WON THE ROUND!');
         setTimeout(() => { if (inDW(myPose.h)) teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }, 2500); }
     }
@@ -3178,17 +3195,17 @@ function gmApply() {
   if (GM.escaped.includes(myId) && !gmLocal.escapedMe) { gmLocal.escapedMe = true; banner('YOU ESCAPED!', 'WAIT FOR THE OTHERS IN THE MODE ROOM', 2.5, '#6dff9a'); teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }
   // monster looks (BTM)
   me_monster(GM.mode === 'btm' && GM.phase !== 'idle' && GM.phase !== 'end' && GM.monster === myId);
-  for (const [id, r] of remotes) { const isM = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id; r.g.setMonster(isM, r.fur, GM.form, GM.disguise); r.g.root.visible = true; r.g.setName(isM && GM.form === 'shape' ? GM.dname : cleanName(r.nm || '')); }
+  for (const [id, r] of remotes) { const isM = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id; r.g.setMonster(isM, r.fur, GM.form, GM.disguise); r.g.root.visible = true; r.g.setName(isM && GM.form === 'shape' ? GM.dname : tagFor(r)); }
   for (let i = 0; i < 6; i++) dwKeys[i].visible = GM.mode === 'horror' && GM.phase === 'play' && !(GM.keys & (1 << i));
   drawGmPeds(); gmHudText = '~'; drawGmHud();
 }
 let meMonsterOn = false;
-const MON_FORMS = ['chainsaw', 'reach', 'shadow', 'brute', 'shape'];
-const FORM_NAME = { chainsaw: 'CHAINSAW', reach: 'LONGREACH', shadow: 'SHADOW', brute: 'BRUTE', shape: 'SHAPESHIFTER' };
-const FORM_SPEED = { chainsaw: 1.35, reach: 1.25, shadow: 1.3, brute: 1.15, shape: 1.3 };
+const MON_FORMS = ['basic', 'chainsaw', 'reach', 'shadow', 'brute', 'shape'];
+const FORM_NAME = { basic: 'MONSTER', chainsaw: 'CHAINSAW', reach: 'LONGREACH', shadow: 'SHADOW', brute: 'BRUTE', shape: 'SHAPESHIFTER' };
+const FORM_SPEED = { basic: 1.35, chainsaw: 1.35, reach: 1.25, shadow: 1.3, brute: 1.15, shape: 1.3 };
 const tagMul = () => GM.form === 'reach' ? 1.7 : GM.form === 'brute' ? 1.3 : 1; // Longreach grabs from far, Brute is huge
 let meMonsterForm = '';
-function me_monster(on) { if (on === meMonsterOn && GM.form === meMonsterForm) return; meMonsterOn = on; meMonsterForm = GM.form; me.setMonster(on, MY_COLOR, GM.form, GM.disguise); me.setName(on && GM.form === 'shape' ? GM.dname : SET.name || ''); moveBoost = on ? FORM_SPEED[GM.form] || 1.35 : 1; }
+function me_monster(on) { if (on === meMonsterOn && GM.form === meMonsterForm) return; meMonsterOn = on; meMonsterForm = GM.form; me.setMonster(on, MY_COLOR, GM.form, GM.disguise); me.setName(on && GM.form === 'shape' ? GM.dname : myTag()); moveBoost = on ? FORM_SPEED[GM.form] || 1.35 : 1; }
 // what the monster forms do while a round is on
 const monFx = { revT: 0, buzzT: 0 };
 function updateMonsterForms(dt, t, h) {
@@ -3305,7 +3322,7 @@ function hostLongarm(dt, alive) {
 // ================= AI GORILLAS (LVL ???) =================
 // They roam the lobby with a new random color every time, and join BTM as survivors when you're alone.
 const randFur = () => new THREE.Color().setHSL(Math.random(), 0.7 + Math.random() * 0.25, 0.45 + Math.random() * 0.2).getHex();
-const lobbySpot = out => { const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 16; return out.set(Math.cos(a) * r, 0, Math.sin(a) * r + 3); };
+const lobbySpot = out => { const a = Math.random() * Math.PI * 2, r = 3.8 + Math.random() * 6; return out.set(Math.cos(a) * r, 0, Math.sin(a) * r); };
 const BOTS = Array.from({ length: 5 }, (_, i) => {
   const g = makeGorilla(randFur()); g.setName('LVL ???'); g.setRobot(new THREE.Color().setHSL(Math.random(), 1, 0.6).getHex());
   const b = { id: 'bot' + i, g, pose: mkPose(), pos: new THREE.Vector3(), target: new THREE.Vector3(), ground: 0, yaw: Math.random() * 6, t: Math.random() * 3, hop: 0, hopV: 0, walk: 0, mode: 'lobby', glow: null };
@@ -3381,8 +3398,8 @@ SB_CH[3].fights = ['gloom']; SB_CH[4].fights = ['bat']; SB_CH[5].fights = ['crab
 SB_CH[3].guards = 'Wait! A Gloomlet guard is in the way. Battle it first!'; SB_CH[4].guards = 'A Spark Bat guard! Beat it, then the Witch!'; SB_CH[5].guards = 'A Bolt Crab guard. Clicky. Beat it first!';
 SB_CH[5].win = ['YOU BEAT ALL THREE! The arena is so quiet now.', 'Too quiet. Wait... do you hear that? Something BIG.', 'Uh oh. Get ready...'];
 const KING = { id: 'king', name: 'THE HOLLOW KING', color: 0x7a2cff, style: 'king', hp: 2600, scale: 1.7, intro: 'The ruler of the dark. He wants to wake the Eye.', attacks: ['halo', 'twin', 'gate', 'prism', 'moths', 'grid', 'starfall'] };
-BOSSES.push(KING); // index 3 (after the arena statues were made, so it has no statue: story only)
-SB_CH[6] = { boss: 3, title: 'THE HOLLOW KING', fights: ['gloom', 'bat', 'crab'],
+BOSSES.push(KING); // (after the arena statues were made, so it has no statue: story only)
+SB_CH[6] = { boss: BOSSES.indexOf(KING), title: 'THE HOLLOW KING', fights: ['gloom', 'bat', 'crab'],
   intro: ['Uh oh. Uh oh uh oh. Something HUGE is coming.', 'Everyone whispers about the Hollow King. He wants to wake up the Eye!', 'First his three guards. Then... him. I\'ll be right behind you. WAY behind you.'],
   guards: 'Here come his guards. One at a time. Hopefully.',
   win: ['YOU BEAT THE HOLLOW KING!!!', 'The Eye didn\'t wake up. It looked kind of... disappointed?', 'I\'m so proud of you. I think. Is this feeling pride? Or am I hungry?', 'THE END... for now.'] };
@@ -3510,7 +3527,69 @@ function updateGrab(dt, t) {
   GRAB.keyE = false;
 }
 
-window.__boss = { updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= LEVELS, MONSTER SHOP, LOBBY DECOR =================
+let xp = 0; try { xp = +localStorage.getItem('darkbound-xp') || 0; } catch (e) { }
+const levelOf = x => 1 + Math.floor(Math.sqrt(x / 60)); // LVL 2 at 60 XP, 3 at 240, 4 at 540, 5 at 960...
+let myLevel = levelOf(xp);
+const myTag = () => ((SET.name ? SET.name + ' ' : '') + 'LVL ' + myLevel);
+const tagFor = r => (((r.nm ? cleanName(r.nm) + ' ' : '') + (r.lv ? 'LVL ' + r.lv : '')).trim());
+function addXP(n, why) {
+  const before = myLevel; xp += n; try { localStorage.setItem('darkbound-xp', String(xp)); } catch (e) { } myLevel = levelOf(xp);
+  if (myLevel > before) { setTimeout(() => banner('LEVEL UP!', 'YOU ARE LEVEL ' + myLevel + (why ? ' • ' + why : ''), 3, '#6dff9a'), 2200); [523, 784, 1047, 1568].forEach((f, i) => sfx(f, f, 0.25, 'triangle', 0.15, 2.2 + i * 0.1)); }
+  if (!meMonsterOn || GM.form !== 'shape') me.setName(myTag()); for (const s of monShop) s.state = '';
+}
+setTimeout(() => me.setName(myTag()), 0);
+// ---- Monster Shop: unlock BTM forms with Bound Bucks, or by reaching a level ----
+const FORM_UNLOCK = { chainsaw: { bb: 40, lvl: 2 }, reach: { bb: 30, lvl: 2 }, shadow: { bb: 60, lvl: 3 }, brute: { bb: 50, lvl: 3 }, shape: { bb: 100, lvl: 5 } };
+let boughtForms = []; try { boughtForms = JSON.parse(localStorage.getItem('darkbound-forms') || '[]'); } catch (e) { }
+const ownsForm = f => f === 'basic' || boughtForms.includes(f) || myLevel >= FORM_UNLOCK[f].lvl;
+const myForms = () => MON_FORMS.filter(ownsForm);
+function makeFormIcon(f) {
+  const g = new THREE.Group();
+  if (f === 'chainsaw') { part(g, new THREE.BoxGeometry(0.16, 0.13, 0.2), toon(0xe0702a, 0.3), null, null, 0.008); part(g, new THREE.BoxGeometry(0.04, 0.08, 0.45), toon(0x9aa3b0, 0.2), [0, 0, -0.3], null, 0.008); }
+  if (f === 'reach') for (let i = 0; i < 3; i++) part(g, new THREE.ConeGeometry(0.04, 0.45, 8), toon(0xd8d0e0, 0.25), [-0.1 + i * 0.1, 0, 0], null, 0.006);
+  if (f === 'shadow') { part(g, S(0.18, 14, 10), toon(0x0a0a12, 0.05), null, null, 0.008); for (const s of [-1, 1]) part(g, S(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff1a2a }), [s * 0.07, 0.03, 0.16], null, 0); }
+  if (f === 'brute') { part(g, new THREE.DodecahedronGeometry(0.17, 0), toon(0x5a0a1a, 0.25), null, null, 0.008); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; part(g, new THREE.ConeGeometry(0.04, 0.14, 6), toon(0xd8d0e0, 0.2), [Math.cos(a) * 0.18, 0.08, Math.sin(a) * 0.18], null, 0.004); } }
+  if (f === 'shape') { part(g, S(0.16, 14, 10), toon(0x9b5cff, 0.4), null, null, 0.008); part(g, new THREE.TorusGeometry(0.24, 0.02, 6, 24), new THREE.MeshBasicMaterial({ color: 0xff5cf0 }), null, null, 0).rotation.x = Math.PI / 2; }
+  scene.add(g); return g;
+}
+const SHOP_FORMS = ['chainsaw', 'reach', 'shadow', 'brute', 'shape'];
+const monShop = SHOP_FORMS.map((f, i) => {
+  const p = MON_PEDS[i], icon = makeFormIcon(f); icon.position.set(p.x, p.y + 0.35, p.z);
+  const lab = labelTex(); const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.31), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true }));
+  sign.position.set(p.x, p.y + 1.05, p.z); sign.rotation.y = Math.PI; scene.add(sign);
+  return { f, icon, lab, cd: 0, state: '' };
+});
+{ const lab = labelTex(null, 1024, 256); lab.draw(['MONSTER SHOP', 'BTM FORMS • PAY BB OR REACH THE LEVEL', '#ff3b6b']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = '84px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('MONSTER SHOP', 512, 125); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.7), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(6, 2.75, 10.9); m.rotation.y = Math.PI; scene.add(m); }
+function useShop(s) {
+  if (s.cd > 0) return; s.cd = 1.5; const u = FORM_UNLOCK[s.f], name = FORM_NAME[s.f];
+  if (ownsForm(s.f)) { banner(name, 'UNLOCKED! YOU CAN GET IT AS THE MONSTER', 1.8, '#6dff9a'); return; }
+  if (bananas >= u.bb) { addBananas(-u.bb); boughtForms.push(s.f); try { localStorage.setItem('darkbound-forms', JSON.stringify(boughtForms)); } catch (e) { } s.state = ''; banner('UNLOCKED: ' + name, 'NOW YOU CAN BE IT IN BTM', 2.2, '#6dff9a'); sfx(523, 1047, 0.3, 'triangle', 0.15); return; }
+  banner('LOCKED: ' + name, 'NEED BB ' + u.bb + ' OR LEVEL ' + u.lvl + ' • YOU: BB ' + bananas + ', LVL ' + myLevel, 2.2, '#ff5c8a');
+}
+addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; let best = null, bd = 1.4; for (const s of monShop) { const d = Math.hypot(myPose.h.x - s.icon.position.x, myPose.h.z - s.icon.position.z); if (d < bd) { bd = d; best = s; } } if (best) useShop(best); });
+// ---- lobby decor: glowing fountain water, lanterns, arch signs ----
+const water = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 4.8), new THREE.MeshBasicMaterial({ color: 0x5ef2ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+water.rotation.x = -Math.PI / 2; water.position.set(0, 0.6, 0); scene.add(water);
+for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8, x = Math.cos(a) * 7.5, z = Math.sin(a) * 7.5;
+  part(scene, new THREE.CylinderGeometry(0.06, 0.08, 2, 8), toon(0x2e2747, 0.1), [x, 1.15, z], null, 0.01);
+  part(scene, S(0.15, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffc47a }), [x, 2.25, z], null, 0.01); }
+for (const [x, z, ry, title, sub] of [[0, -14, 0, 'THE TOWER', 'NORTH'], [0, 14, Math.PI, 'BOSS ARENA', 'SOUTH-EAST'], [-14, 0, Math.PI / 2, 'THE MAZE', 'WEST'], [14, 0, -Math.PI / 2, 'CRYSTAL SPIRE', 'EAST']]) {
+  const lab = labelTex(); lab.draw([title, sub, '#ffd447']);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, side: THREE.DoubleSide })); m.position.set(x, 4.4, z); m.rotation.y = ry; scene.add(m);
+}
+function updateLobby(dt, t) {
+  water.material.opacity = 0.3 + Math.sin(t * 2) * 0.08;
+  for (const s of monShop) {
+    s.cd -= dt; s.icon.rotation.y += dt * 0.9; s.icon.position.y = MON_PEDS[monShop.indexOf(s)].y + 0.35 + Math.sin(t * 2 + s.icon.id) * 0.04;
+    const st = ownsForm(s.f) ? 'own' : bananas >= FORM_UNLOCK[s.f].bb ? 'buy' : 'lock';
+    if (st !== s.state) { s.state = st; const u = FORM_UNLOCK[s.f]; s.lab.draw([FORM_NAME[s.f], st === 'own' ? 'UNLOCKED ✓' : 'BB ' + u.bb + ' OR LVL ' + u.lvl, st === 'own' ? '#6dff9a' : st === 'buy' ? '#ffd447' : '#ff5c8a']); }
+    if (renderer.xr.isPresenting) for (const h of hands) if (h.source && h.last.distanceTo(s.icon.position) < 0.35) useShop(s);
+  }
+}
+
+window.__boss = { monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -3592,7 +3671,7 @@ renderer.setAnimationLoop(() => {
   else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
   updateWind(Math.hypot(vel.x, vel.y, vel.z));
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateGrab(dt, t); updateSB(dt); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateComp(dt, t); updateGM(dt, t); updateBots(dt, t); updateGrab(dt, t); updateSB(dt); updateLobby(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
