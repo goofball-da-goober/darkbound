@@ -590,7 +590,7 @@ function makeGorilla(color) {
     const palm = toon(0x3b2a4d); palm.emissive.set(0x5ef2ff); palm.emissiveIntensity = 0;
     return { side, palm, shoulder: part(root, S(0.085), fur), upper: limb(root, 0.058, 0.05, fur), elbow: part(root, S(0.052), fur), fore: limb(root, 0.05, 0.072, fur), hand: makeHand(root, side, palm, skinDark, fur) };
   });
-  const ARM1 = 0.17, ARM2 = 0.19; // upper arm / forearm, matched to your real reach at gorilla size
+  const ARM1 = 0.2, ARM2 = 0.22; // upper arm / forearm, matched to your real reach at gorilla size
   let selfHidden = false;
 
   return {
@@ -621,9 +621,9 @@ function makeGorilla(color) {
       for (const A of arms) {
         const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
         A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
-        _gsh.set(A.side * 0.17, -0.26, 0.05).applyAxisAngle(_up, yaw).add(p.h);   // shoulder: beside and below your eyes
+        _gsh.set(A.side * 0.22, -0.36, 0.03).applyAxisAngle(_up, yaw).add(p.h);   // shoulder: on the sides of the body, well below your eyes (like Gorilla Tag)
         _gwr.set(0, 0.008, 0.075).applyQuaternion(hq).add(hp);
-        _gbd.set(A.side * 0.8, -0.55, 0.3).applyAxisAngle(_up, yaw);              // elbows bend out and down, gorilla style
+        _gbd.set(A.side * 0.55, -0.75, 0.25).applyAxisAngle(_up, yaw);            // elbows hang down and a little out
         const reach = _gsh.distanceTo(_gwr), k = Math.max(1, reach / ((ARM1 + ARM2) * 0.96)); // arms stretch instead of popping off
         solveElbow(_gsh, _gwr, ARM1 * k, ARM2 * k, _gbd, _gel);
         A.shoulder.position.copy(_gsh);
