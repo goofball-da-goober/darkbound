@@ -727,7 +727,7 @@ function makeGorilla(color) {
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
   let selfHidden = false, hatObj = null, tag = null, tagName = '', isMon = false, monObj = null, roboGlow = null, monForm = '';
-  const formObjs = [];
+  const formObjs = []; let shapeColor = 0, shapeShown = false;
 
   return {
     root, head, body,
@@ -761,7 +761,7 @@ function makeGorilla(color) {
       part(body, S(0.055, 10, 8), roboGlow, [0, 0.03, -0.2], [1, 1, 0.5], 0);                                // chest core
       part(body, new THREE.TorusGeometry(0.065, 0.012, 6, 16), bolt, [0, 0.03, -0.195], null, 0);
     },
-    setMonster(on, normal, form) {
+    setMonster(on, normal, form, disguise) {
       if (on === isMon && form === monForm) return; isMon = on; monForm = form;
       for (const o of formObjs) o.parent?.remove(o); formObjs.length = 0;
       if (on && form === 'chainsaw') { // a buzzing chainsaw in the right hand
@@ -775,7 +775,11 @@ function makeGorilla(color) {
       if (!monObj) { monObj = new THREE.Group(); const hornM = toon(0x5a0a1a, 0.3), eyeM = new THREE.MeshBasicMaterial({ color: 0xff1a2a });
         for (const s of [-1, 1]) { part(monObj, new THREE.ConeGeometry(0.035, 0.14, 8), hornM, [s * 0.08, 0.17, 0], null, 0.005).rotation.z = -s * 0.5; part(monObj, S(0.021, 8, 6), eyeM, [s * 0.046, 0.012, -0.2], null, 0); }
         skull.add(monObj); }
-      monObj.visible = on; if (on) this.setColor(form === 'shadow' ? 0x0a0a12 : 0x2a0a14); else if (normal !== undefined) this.setColor(normal);
+      shapeColor = disguise ?? normal; shapeShown = false;
+      monObj.visible = on && form !== 'shape'; if (on) this.setColor(form === 'shape' ? shapeColor : form === 'shadow' ? 0x0a0a12 : 0x2a0a14); else if (normal !== undefined) this.setColor(normal);
+    },
+    setShapeReveal(rev) { // flip between the disguise and the true form
+      if (!isMon || monForm !== 'shape' || rev === shapeShown) return; shapeShown = rev; monObj.visible = rev; this.setColor(rev ? 0x2a0a14 : shapeColor);
     },
     setColor(hex) { c.set(hex); fur.color.copy(c); fur.emissive.copy(c); furDark.color.copy(c).multiplyScalar(0.5); furDark.emissive.copy(furDark.color); },
     setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
@@ -3123,7 +3127,7 @@ function drawGmHud() {
 }
 // ---- the host runs the round ----
 const gmAuth = () => bossAuth();
-function gmSend() { bsend({ t: 'gm', mode: GM.mode, phase: GM.phase, tt: +GM.t.toFixed(1), dur: GM.dur, parts: GM.parts, caught: GM.caught, escaped: GM.escaped, monster: GM.monster, form: GM.form, held: GM.held || '', heldHand: GM.heldHand || 'r', rip: GM.rip || null, keys: GM.keys, ai: [+GM.ai.x.toFixed(2), +GM.ai.z.toFixed(2), +GM.ai.yaw.toFixed(2)], result: GM.result }); }
+function gmSend() { bsend({ t: 'gm', mode: GM.mode, phase: GM.phase, tt: +GM.t.toFixed(1), dur: GM.dur, parts: GM.parts, caught: GM.caught, escaped: GM.escaped, monster: GM.monster, form: GM.form, disguise: GM.disguise ?? 0, dname: GM.dname || '', held: GM.held || '', heldHand: GM.heldHand || 'r', rip: GM.rip || null, keys: GM.keys, ai: [+GM.ai.x.toFixed(2), +GM.ai.z.toFixed(2), +GM.ai.yaw.toFixed(2)], result: GM.result }); }
 function gmPlayersInDW() { const ids = []; if (inDW(myPose.h)) ids.push(myId); for (const [id, r] of remotes) if (inDW(r.c.h)) ids.push(id); return ids; }
 function gmStart(mode) {
   if (GM.phase !== 'idle') return;
@@ -3131,13 +3135,16 @@ function gmStart(mode) {
   let withBots = false;
   if (mode === 'btm' && parts.length < 2) { if (remotes.size) { banner('BTM NEEDS 2+ PLAYERS IN HERE', 'GET YOUR FRIENDS INTO THE DARKWOOD', 2.5, '#ff3b6b'); return; } withBots = true; for (const b of BOTS.slice(0, 4)) parts.push(b.id); banner('THE AI GORILLAS WILL PLAY', 'YOU ARE THE MONSTER!', 2.5, '#ff3b6b'); }
   Object.assign(GM, { held: '', heldHand: 'r', heldT: 0, rip: null, mode, phase: 'count', t: 0, dur: GMODE[mode].dur, parts, caught: [], escaped: [], keys: 0, result: '', monster: mode === 'btm' ? (withBots ? myId : parts[Math.floor(Math.random() * parts.length)]) : '', form: MON_FORMS[Math.floor(Math.random() * MON_FORMS.length)] });
+  { const others = GM.parts.filter(id => id !== GM.monster), pick = others[Math.floor(Math.random() * others.length)] || '';
+    GM.disguise = pick.startsWith('bot') ? new THREE.Color().setHSL(Math.random(), 0.8, 0.55).getHex() : pick === myId ? MY_COLOR : remotes.get(pick)?.fur ?? PALETTE[0];
+    GM.dname = pick.startsWith('bot') ? 'LVL ???' : pick === myId ? (SET.name || '') : cleanName(remotes.get(pick)?.nm || ''); }
   GM.ai = { x: MX, z: MZ - 14, yaw: 0, st: 'wander' }; gmLocal.aiPos.set(MX, 0, MZ - 14);
   gmSend(); gmApply(true);
 }
 function gmFinish(result) { GM.phase = 'end'; GM.t = 0; GM.result = result; gmSend(); gmApply(true); }
 function gmNet(d) {
   if (d.t === 'gmgrab' || d.t === 'gmwiggle' || d.t === 'gmrip') { if (gmAuth()) gmGrabNet(d); return; }
-  if (d.t === 'gm') { if (!gmAuth()) { Object.assign(GM, { mode: d.mode, phase: d.phase, dur: d.dur, parts: d.parts || [], caught: d.caught || [], escaped: d.escaped || [], monster: d.monster || '', form: d.form || '', held: d.held || '', heldHand: d.heldHand || 'r', rip: d.rip || null, keys: d.keys || 0, result: d.result || '' }); GM.t = d.tt; if (d.ai) { GM.ai.x = d.ai[0]; GM.ai.z = d.ai[1]; GM.ai.yaw = d.ai[2]; } gmApply(false); } return; }
+  if (d.t === 'gm') { if (!gmAuth()) { Object.assign(GM, { mode: d.mode, phase: d.phase, dur: d.dur, parts: d.parts || [], caught: d.caught || [], escaped: d.escaped || [], monster: d.monster || '', form: d.form || '', disguise: d.disguise ?? 0, dname: d.dname || '', held: d.held || '', heldHand: d.heldHand || 'r', rip: d.rip || null, keys: d.keys || 0, result: d.result || '' }); GM.t = d.tt; if (d.ai) { GM.ai.x = d.ai[0]; GM.ai.z = d.ai[1]; GM.ai.yaw = d.ai[2]; } gmApply(false); } return; }
   if (!gmAuth()) return;
   if (d.t === 'gmreq' && GMODE[d.mode]) gmStart(d.mode);
   if (d.t === 'gmkey' && GM.phase === 'play' && d.i >= 0 && d.i < 6) { GM.keys |= 1 << d.i; gmSend(); gmApply(false); }
@@ -3152,7 +3159,7 @@ function gmApply() {
   if (GM.phase !== gmLocal.phase) {
     const was = gmLocal.phase; gmLocal.phase = GM.phase;
     if (GM.phase === 'count' || GM.phase === 'idle') restoreAllParts(); // everyone gets their head and arms back
-    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE ' + FORM_NAME[GM.form] + '! GRAB THEM, THEN YANK TO POP' : 'RUN! THE MONSTER IS THE ' + FORM_NAME[GM.form]) : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
+    if (GM.phase === 'count') { gmLocal.caughtMe = gmLocal.escapedMe = false; banner(GMODE[GM.mode].name, me ? (GM.mode === 'btm' ? (GM.monster === myId ? 'YOU ARE THE ' + FORM_NAME[GM.form] + '! GRAB THEM, THEN YANK TO POP' : (GM.form === 'shape' ? 'THE SHAPESHIFTER... IT LOOKS LIKE ONE OF YOU!' : 'RUN! THE MONSTER IS THE ' + FORM_NAME[GM.form])) : 'FIND 5 KEYS • OPEN THE GATE • ESCAPE') : 'A ROUND IS STARTING', 3, '#ff3b6b'); sfx(70, 40, 1.5, 'sawtooth', 0.25); }
     if (GM.phase === 'play' && me) {
       const sp = OPEN_CELLS[(GM.parts.indexOf(myId) * 7 + 3) % OPEN_CELLS.length];
       if (GM.mode === 'btm' && GM.monster === myId) { teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); banner('COUNTING TO 12...', 'THEN HUNT THEM DOWN', 3, '#ff3b6b'); }
@@ -3171,20 +3178,24 @@ function gmApply() {
   if (GM.escaped.includes(myId) && !gmLocal.escapedMe) { gmLocal.escapedMe = true; banner('YOU ESCAPED!', 'WAIT FOR THE OTHERS IN THE MODE ROOM', 2.5, '#6dff9a'); teleport(MR_SPOT.x, MR_SPOT.y, MR_SPOT.z); }
   // monster looks (BTM)
   me_monster(GM.mode === 'btm' && GM.phase !== 'idle' && GM.phase !== 'end' && GM.monster === myId);
-  for (const [id, r] of remotes) { r.g.setMonster(GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id, r.fur, GM.form); r.g.root.visible = true; }
+  for (const [id, r] of remotes) { const isM = GM.mode === 'btm' && (GM.phase === 'count' || GM.phase === 'play') && GM.monster === id; r.g.setMonster(isM, r.fur, GM.form, GM.disguise); r.g.root.visible = true; r.g.setName(isM && GM.form === 'shape' ? GM.dname : cleanName(r.nm || '')); }
   for (let i = 0; i < 6; i++) dwKeys[i].visible = GM.mode === 'horror' && GM.phase === 'play' && !(GM.keys & (1 << i));
   drawGmPeds(); gmHudText = '~'; drawGmHud();
 }
 let meMonsterOn = false;
-const MON_FORMS = ['chainsaw', 'reach', 'shadow', 'brute'];
-const FORM_NAME = { chainsaw: 'CHAINSAW', reach: 'LONGREACH', shadow: 'SHADOW', brute: 'BRUTE' };
-const FORM_SPEED = { chainsaw: 1.35, reach: 1.25, shadow: 1.3, brute: 1.15 };
+const MON_FORMS = ['chainsaw', 'reach', 'shadow', 'brute', 'shape'];
+const FORM_NAME = { chainsaw: 'CHAINSAW', reach: 'LONGREACH', shadow: 'SHADOW', brute: 'BRUTE', shape: 'SHAPESHIFTER' };
+const FORM_SPEED = { chainsaw: 1.35, reach: 1.25, shadow: 1.3, brute: 1.15, shape: 1.3 };
 const tagMul = () => GM.form === 'reach' ? 1.7 : GM.form === 'brute' ? 1.3 : 1; // Longreach grabs from far, Brute is huge
 let meMonsterForm = '';
-function me_monster(on) { if (on === meMonsterOn && GM.form === meMonsterForm) return; meMonsterOn = on; meMonsterForm = GM.form; me.setMonster(on, MY_COLOR, GM.form); moveBoost = on ? FORM_SPEED[GM.form] || 1.35 : 1; }
+function me_monster(on) { if (on === meMonsterOn && GM.form === meMonsterForm) return; meMonsterOn = on; meMonsterForm = GM.form; me.setMonster(on, MY_COLOR, GM.form, GM.disguise); me.setName(on && GM.form === 'shape' ? GM.dname : SET.name || ''); moveBoost = on ? FORM_SPEED[GM.form] || 1.35 : 1; }
 // what the monster forms do while a round is on
 const monFx = { revT: 0, buzzT: 0 };
 function updateMonsterForms(dt, t, h) {
+  if (GM.mode === 'btm' && GM.form === 'shape' && (GM.phase === 'play' || GM.phase === 'count')) {
+    const rev = GM.phase === 'play' && (!!GM.held || (GM.t >= 12 && GM.t % 20 < 1.2));
+    const mg = GM.monster === myId ? me : remotes.get(GM.monster)?.g; if (mg) mg.setShapeReveal(rev);
+  }
   if (GM.mode !== 'btm' || GM.phase !== 'play') return;
   if (meMonsterOn && GM.form === 'chainsaw' && GM.t >= 12) { // REV: a speed burst every 10 s
     monFx.revT += dt; const rev = monFx.revT % 10 < 2; moveBoost = rev ? 1.8 : 1.35;
