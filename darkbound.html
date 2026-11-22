@@ -1807,8 +1807,7 @@ function bossNet(d) {
   else if (d.t === 'bhp' && !bossAuth()) syncBoss(d);
   else if (d.t === 'bend' && !bossAuth()) endBoss(!!d.win);
 }
-const STORY_ARENA = { warden: 3, witch: 4, colossus: 5, king: 6 };
-function setArenaFor(def) { const M = def && CH_MAPS[STORY_ARENA[def.id]]; [AX, AZ] = M ? M.arena : [30, 32]; HOME.set(AX, FY + 4.6, AZ - 5); }
+function setArenaFor(def) { const M = def && def.mini && CH_MAPS[def.ch]; [AX, AZ] = M ? M.arena : [30, 32]; HOME.set(AX, FY + 4.6, AZ - 5); }
 function startBoss(i, st) {
   if (B.def) clearBoss();
   const def = BOSSES[i]; setArenaFor(def); B.def = def; B.i = i;
@@ -1854,7 +1853,7 @@ function damageBoss(n, local) {
 function endBoss(win) {
   if (!B.def) return;
   if (!win) { banner('THE BOSS LEFT', '', 2); clearBoss(); SB.active = 0; return; }
-  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED'); addXP(B.def.fan ? 100 : 40, B.def.fan ? 'FAN BOSS BEATEN' : ''); if (SB.active) storyBossWon();
+  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED'); addXP(B.def.fan ? 100 : 40, B.def.fan ? 'FAN BOSS BEATEN' : ''); if (SB.active) { if (B.def.mini) miniWon(); else storyBossWon(); }
   B.phase = 'dead'; B.pt = 0; B.bullets = []; clearLasers();
   banner('VICTORY!', B.def.name + ' IS DEFEATED', 4, '#6dff9a');
   [523, 659, 784, 1047].forEach((f, i) => sfx(f, f, 0.35, 'triangle', 0.18, i * 0.12));
@@ -3996,7 +3995,22 @@ SB_CH[3].fights = ['gloom']; SB_CH[4].fights = ['bat']; SB_CH[5].fights = ['crab
 SB_CH[3].guards = 'Wait! A Gloomlet guard is in the way. Battle it first!'; SB_CH[4].guards = 'A Spark Bat guard! Beat it, then the Witch!'; SB_CH[5].guards = 'A Bolt Crab guard. Clicky. Beat it first!';
 SB_CH[5].win = ['YOU BEAT ALL THREE! The arena is so quiet now.', 'Too quiet. Wait... do you hear that? Something BIG.', 'Uh oh. Get ready...'];
 const KING = { id: 'king', name: 'THE HOLLOW KING', color: 0x7a2cff, style: 'king', hp: 2600, story: true, scale: 1.7, intro: 'The ruler of the dark. He wants to wake the Eye.', attacks: ['halo', 'twin', 'gate', 'prism', 'moths', 'grid', 'starfall'] };
-BOSSES.push(KING); // (after the arena statues were made, so it has no statue: story only)
+BOSSES.push(KING);
+const MINI_OF = {};
+for (const m of [
+  [3, 'GLOOM SPROUT', 0xb07cff, 'jelly', 300, ['halo', 'starfall'], 'It sprouted out of the dark. It is grumpy about it.'],
+  [3, 'SPORE MAMA', 0xd9b3ff, 'moth', 360, ['moths', 'twin'], 'She sneezes spores. Do not breathe. Okay, breathe a little.'],
+  [3, 'HEDGE KNIGHT', 0x5aa36a, 'warden', 420, ['gate', 'halo'], 'A knight made of bushes. Very leafy. Very angry.'],
+  [4, 'SHARD SPRITE', 0x5ef2ff, 'witch', 320, ['sniper', 'prism'], 'Tiny, sharp and very fast.'],
+  [4, 'MIRROR MASK', 0xe8f4ff, 'mask', 380, ['twin', 'grid'], 'It copies everything you do. Rude.'],
+  [4, 'DISCO PRISM', 0xff7ab8, 'disco', 440, ['starfall', 'prism'], 'It only dances in the light. There is a lot of light here.'],
+  [5, 'BOLT BRUTE', 0xff8a3d, 'colossus', 400, ['pinball', 'gate'], 'All bolts, no brains.'],
+  [5, 'GEAR MOTH', 0xd9a441, 'moth', 380, ['moths', 'sniper'], 'Its wings go click click click.'],
+  [5, 'SCRAP JELLY', 0xa0603a, 'jelly', 460, ['grid', 'pinball'], 'A jelly full of old screws. Do not eat.'],
+  [6, 'THRONE GUARD', 0x8a1a3a, 'warden', 480, ['halo', 'grid'], 'The King\'s favorite guard. It never blinks.'],
+  [6, 'SHADOW WITCH', 0x7a2cff, 'witch', 500, ['twin', 'starfall'], 'She whispers. You cannot hear what. Better that way.'],
+  [6, 'CROWN COLOSSUS', 0xffd447, 'colossus', 560, ['pinball', 'prism', 'moths'], 'It wears the King\'s spare crown. It is very proud.'],
+]) { const [ch, name, color, style, hp, attacks, intro] = m, def = { id: 'mini-' + name.toLowerCase().replace(/ /g, '-'), name, color, style, hp, attacks, intro: 'MINI BOSS! ' + intro, mini: true, ch, scale: 0.75 }; BOSSES.push(def); (MINI_OF[ch] ||= []).push(def); } // (after the arena statues were made, so it has no statue: story only)
 SB_CH[6] = { boss: BOSSES.indexOf(KING), title: 'THE HOLLOW KING', fights: ['gloom', 'bat', 'crab'],
   intro: ['Uh oh. Uh oh uh oh. Something HUGE is coming.', 'Everyone whispers about the Hollow King. He wants to wake up the Eye!', 'First his three guards. Then... him. I\'ll be right behind you. WAY behind you.'],
   guards: 'Here come his guards. One at a time. Hopefully.',
@@ -4069,16 +4083,55 @@ for (const M of Object.values(CH_MAPS)) {
   // Bound Bucks hidden on the islands
   M.coinMeshes = M.coins.map(p => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 16), new THREE.MeshBasicMaterial({ color: 0xffd447 })); c.rotation.x = Math.PI / 2; c.position.set(...p); scene.add(c); return c; });
 }
+function summonBoss(def) { const i = BOSSES.indexOf(def); if (bossAuth()) startBoss(i); else bsend({ t: 'bsum', b: i }); }
+function startMini() { const n = SB.active; if (!n) return; if (B.def && B.phase !== 'dead') { setTimeout(startMini, 1500); return; } summonBoss(MINI_OF[n][SB.mini]); }
+function miniWon() {
+  const n = SB.active, list = MINI_OF[n]; if (!n || !list) return; SB.mini++;
+  if (SB.mini < list.length) { setTimeout(() => say([SB.mini === list.length - 1 ? 'Last mini boss! Here it comes!' : 'Next one! ' + (list.length - SB.mini) + ' to go!'], () => setTimeout(startMini, 800)), 2500); return; }
+  setTimeout(() => say(['All the mini bosses are down! Now... the real arena. THE arena. The old one, from the stories.'], () => {
+    SB.final = true; teleport(30 - 7, 0.3, 32 + 6, -0.57); CL.pos.set(30 - 8.5, 1.2, 32 + 7.5); CL.goal.copy(CL.pos);
+    banner(SB_CH[n].title, 'THE BOSS ARENA', 2.5, '#ff3b6b'); sfx(70, 40, 1.2, 'sawtooth', 0.25);
+    setTimeout(() => say(['This is it. Dory, you ready? I am ready. I think. Here it comes!'], () => { if (SB.active === n) startMiniWait(() => summonBoss(BOSSES[SB_CH[n].boss])); }), 1500);
+  }), 3000);
+}
+function startMiniWait(fn) { if (B.def && B.phase !== 'dead') setTimeout(() => startMiniWait(fn), 1500); else fn(); }
+// ---- Claude and Dory fight with you in every story boss fight ----
+const ALLY = { on: false, dory: null, shots: [], cd: [1.2, 2.2], lineT: 3 };
+const ALLY_LINES = [['CLAUDE: BANANA MISSILE!', 'CLAUDE: I threw it! Where did it go? Oh. There.', 'CLAUDE: Take THAT. Please. Politely.', 'CLAUDE: I am helping! Am I helping?'], ['DORY: Hiyah!', 'DORY: Got it! You okay?', 'DORY: Left! No, your other left!', 'DORY: Claude, aim at the BOSS!']];
+const _al = new THREE.Vector3();
+function updateAllies(dt, t) {
+  const fight = !!(B.def && SB.active && B.phase !== 'dead' && B.phase !== 'intro');
+  if (fight && !ALLY.on) { ALLY.on = true; ALLY.dory ||= makeDory(); ALLY.dory.root.visible = true; ALLY.dory.root.position.set(AX + 5, FY + 0.7, AZ + 5); CL.pos.set(AX - 5, FY + 1.05, AZ + 5); toast('CLAUDE AND DORY JOIN THE FIGHT!', 2.5); }
+  if (!fight && ALLY.on) { ALLY.on = false; ALLY.dory.root.visible = false; for (const s of ALLY.shots) scene.remove(s.m); ALLY.shots = []; }
+  if (!ALLY.on) return;
+  const a = t * 0.35, dp = ALLY.dory.root.position;
+  CL.goal.set(AX + Math.cos(a) * 6.5, FY + 1.05, AZ + Math.sin(a) * 6.5);
+  _al.set(AX + Math.cos(a + Math.PI) * 6.5, FY + 0.7, AZ + Math.sin(a + Math.PI) * 6.5); dp.lerp(_al, 1 - Math.exp(-2 * dt)); ALLY.dory.root.lookAt(B.pos.x, dp.y, B.pos.z);
+  [CL.pos, dp].forEach((from, i) => {
+    ALLY.cd[i] -= dt; if (ALLY.cd[i] > 0) return; ALLY.cd[i] = 2.3 + Math.random() * 1.2;
+    const m = new THREE.Mesh(i ? S(0.13, 8, 6) : new THREE.CapsuleGeometry(0.07, 0.22, 3, 6), new THREE.MeshBasicMaterial({ color: i ? 0xc99bff : 0xffd447 }));
+    m.position.copy(from); m.position.y += 0.6; scene.add(m); ALLY.shots.push({ m, from: m.position.clone(), t: 0, who: i });
+  });
+  for (const sh of ALLY.shots) {
+    sh.t += dt / 0.7; const k = Math.min(1, sh.t); _al.copy(sh.from).lerp(B.pos, k); _al.y += Math.sin(k * Math.PI) * 1.6; sh.m.position.copy(_al); sh.m.rotation.z += dt * 12;
+    if (sh.t < 1) continue;
+    scene.remove(sh.m); sh.done = true; const open = B.phase === 'stag' || !B.def.story;
+    if (open && bossAuth()) damageBoss(B.phase === 'stag' ? 14 : 6, false);
+    sfx(open ? 500 : 1300, open ? 180 : 1000, 0.08, 'square', 0.08);
+    if ((ALLY.lineT -= 1) <= 0) { ALLY.lineT = 3 + Math.floor(Math.random() * 3); const L = ALLY_LINES[sh.who]; toast(L[Math.floor(Math.random() * L.length)]); }
+  }
+  ALLY.shots = ALLY.shots.filter(x => !x.done);
+}
 const CH_EXTRA = { // what Claude says when a map starts, and when you reach the arena
-  3: ['Welcome to the Gloom Gardens! The mushrooms are huge. I tried to eat one. It tried to eat me back.', 'Three guards are hiding on the islands. Beat them, then the Warden waits in the arena at the end!'],
-  4: ['The Prism Halls! Everything is shiny. I can see like nine of me. They all look confused.', 'Guards on the islands again. Then the Witch, way at the end.'],
-  5: ['The Rust Works. It squeaks. Everything squeaks. I squeak too when I am nervous. Squeak.', 'Beat the guards, then the Colossus in the big arena.'],
-  6: ['This is it. The Hollow Throne. It is very dark. I brought a snack for courage. I ate it already.', 'His three guards are out on the islands. Then... the King.'],
+  3: ['Welcome to the Gloom Gardens! The mushrooms are huge. I tried to eat one. It tried to eat me back.', 'Three guards are hiding on the islands. Beat them, then the mini bosses in the ring at the end!'],
+  4: ['The Prism Halls! Everything is shiny. I can see like nine of me. They all look confused.', 'Guards on the islands again. Then a ring full of mini bosses at the end.'],
+  5: ['The Rust Works. It squeaks. Everything squeaks. I squeak too when I am nervous. Squeak.', 'Beat the guards, then the mini bosses in the ring.'],
+  6: ['This is it. The Hollow Throne. It is very dark. I brought a snack for courage. I ate it already.', 'His three guards are out on the islands. Then his mini bosses. Then... the King.'],
 };
 function startBossChapter(n) {
   if (!n) return; const M = CH_MAPS[n]; if (!M) return;
   if (B.def && B.phase === 'dead') { setTimeout(() => startBossChapter(n), 1000); return; }
-  SB.active = n; SB.map = M; SB.bossAsked = false; SB.remindT = 0; SB.check = new THREE.Vector3(M.start.x, 0.3, M.start.z);
+  SB.active = n; SB.map = M; SB.bossAsked = false; SB.mini = 0; SB.final = false; SB.remindT = 0; SB.check = new THREE.Vector3(M.start.x, 0.3, M.start.z);
   for (const e of M.enc) { e.alive = true; e.cd = 0; e.m.root.visible = true; }
   M.coinMeshes.forEach(c => { c.visible = true; });
   teleport(M.start.x, 0.3, M.start.z, M.face);
@@ -4100,6 +4153,7 @@ function updateSB(dt) {
   }
   const M = SB.map, n = SB.active; if (!n || !M) return;
   const h = myPose.h;
+  if (SB.final) { if (Math.hypot(h.x - 30, h.z - 32) > 45) { SB.active = 0; SB.final = false; } return; } // the final fight is in the boss arena
   if (Math.hypot(h.x - M.start.x, h.z - M.start.z) > 220) { SB.active = 0; return; } // you left the chapter
   // Claude tags along
   if (CL.pos.distanceTo(h) > 3.2) { _sbv.set(h.x - CL.pos.x, 0, h.z - CL.pos.z).normalize(); CL.goal.set(h.x - _sbv.x * 1.8 + _sbv.z * 1.2, h.y - 0.3, h.z - _sbv.z * 1.8 - _sbv.x * 1.2); }
@@ -4125,7 +4179,7 @@ function updateSB(dt) {
   if (inArena && !SB.bossAsked) {
     if (M.enc.some(e => e.alive)) { if (SB.remindT <= 0) { SB.remindT = 10; say(['Wait wait wait! There are still guards out there. The boss won\'t come out until they are beaten. I think. Boss rules.']); } }
     else if (B.def && B.phase !== 'dead') { if (SB.remindT <= 0) { SB.remindT = 8; banner('A BOSS IS ALREADY OUT', 'SOMEONE ELSE IS FIGHTING ONE. WAIT A MOMENT', 2.5, '#ff8a3d'); } }
-    else if (!B.def) { SB.bossAsked = true; say(['Here it comes... act cool. ACT COOL.'], () => { if (B.def || SB.active !== n) { SB.bossAsked = false; return; } if (bossAuth()) startBoss(SB_CH[n].boss); else bsend({ t: 'bsum', b: SB_CH[n].boss }); }); }
+    else if (!B.def) { SB.bossAsked = true; SB.mini = 0; say([MINI_OF[n].length + ' mini bosses live in this ring. Beat them all and the road to the real arena opens!', 'Dory and I will help! Probably! Here comes the first one!'], startMini); }
   }
 }
 
@@ -4493,7 +4547,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
@@ -4597,7 +4651,7 @@ renderer.setAnimationLoop(() => {
   for (let i = 0; i < PN; i++) { let y = pPos[i * 3 + 1] + dt * (1.5 + (i % 7) * 0.3); if (y > 30) y -= 30; pPos[i * 3 + 1] = y; }
   pGeo.attributes.position.needsUpdate = true;
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.position.y += Math.sin(t * 0.4 + m.userData.bob) * 0.15 * dt; }
-  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t);
+  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t); updateAllies(dt, t);
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
   if (SPECTATE) renderSpectator(t);
