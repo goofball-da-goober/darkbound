@@ -83,7 +83,7 @@ scene.background = new THREE.Color(0x07040f);
 scene.fog = new THREE.FogExp2(0x0b0620, 0.018);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !/OculusBrowser|Quest|Pico/i.test(navigator.userAgent) ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
@@ -609,7 +609,12 @@ function updateDesktop(dt) {
 
 renderer.xr.addEventListener('sessionstart', () => { const ss = renderer.xr.getSession(); for (const ev of ['selectstart', 'squeezestart', 'select', 'squeeze']) ss?.addEventListener(ev, ensureAudio); ensureAudio(); enableMic(); respawn(); document.getElementById('hud').style.display = 'none'; });
 renderer.xr.addEventListener('sessionend', () => { camera.position.set(0, 1.6, 0); rig.quaternion.identity(); document.getElementById('hud').style.display = ''; });
-addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); thirdCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+function fitView() {
+  const a = innerWidth / innerHeight; camera.aspect = thirdCam.aspect = a;
+  if (!renderer.xr.isPresenting && camera.fov !== 95) { const f = a < 1 ? Math.min(105, 2 * Math.atan(Math.tan(37.5 * Math.PI / 180) / a) * 180 / Math.PI) : 75; camera.fov = f; thirdCam.fov = f - 5; } // portrait: keep it wide sideways
+  camera.updateProjectionMatrix(); thirdCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', fitView); addEventListener('orientationchange', () => setTimeout(fitView, 300));
 
 // ================= MULTIPLAYER (PeerJS: first player in a room hosts, others join) =================
 const params = new URLSearchParams(location.search);
@@ -3052,7 +3057,7 @@ function drawComp() {
   if (menu === 'CREDITS') { line('DARKBOUND', '#5ef2ff', 44); line('A GORILLA VR GAME', '#cbbcf0', 26); line('IDEAS, STORY, BOSSES & LORE: THE CREATOR', '#ffffff', 24); line('CODE HELP: CLAUDE', '#ffffff', 24); line('THE EYE IS WATCHING...', '#ff5c8a', 24); line('THANKS FOR PLAYING!', '#6dff9a', 28); }
   if (CP.msg) { c.fillStyle = '#6dff9a'; c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText(CP.msg, 325, 560); }
   c.fillStyle = '#8f80b8'; c.font = '22px "Lilita One", system-ui, sans-serif';
-  c.fillText(DEVICE === 'pc' ? (CP.typing ? 'TYPING! ARROWS: MENU  , . / : OPT 1-3  ESC: STOP' : 'PRESS T NEAR THE COMPUTAH TO TYPE') : DEVICE === 'mobile' ? 'TAP THE KEYS TO TYPE' : 'PRESS THE KEYS WITH YOUR HANDS', 20, 610);
+  c.fillText(DEVICE === 'pc' ? (CP.typing ? 'TYPING! ARROWS: MENU  , . / : OPT 1-3  ESC: STOP' : 'PRESS T NEAR THE COMPUTAH TO TYPE') : DEVICE === 'mobile' ? 'TAP ⌨ TYPE (OR THE KEYS)' : 'PRESS THE KEYS WITH YOUR HANDS', 20, 610);
   compTex.needsUpdate = true;
 }
 // PC: press T near the computer to type on it with your real keyboard
@@ -3117,6 +3122,31 @@ if (DEVICE === 'mobile') {
   const ui = document.createElement('div'); ui.id = 'touch';
   ui.innerHTML = '<div id="thelp">DARKBOUND • ' + DEVICE_NAME + '<br>Stick: move • Drag: look • Tap keys & buttons</div><div id="joy"><div id="nub"></div></div><div id="tbtns"><button data-k="jump">JUMP</button><button data-k="KeyE">ACT</button><button data-k="KeyC">VIEW</button><button data-k="KeyV">CAM</button></div>';
   document.body.appendChild(ui);
+  fitView();
+  const help = ui.querySelector('#thelp'); setTimeout(() => { help.style.transition = 'opacity 1s'; help.style.opacity = 0; }, 9000);
+  const rot = document.createElement('div'); rot.textContent = '↻ TURN YOUR PHONE SIDEWAYS FOR THE BEST VIEW';
+  rot.style.cssText = 'position:absolute;left:50%;top:max(70px,env(safe-area-inset-top,0px));transform:translateX(-50%);background:rgba(10,5,25,.75);border:2px solid #ffd447;color:#ffd447;border-radius:8px;padding:5px 10px;font-size:13px;white-space:nowrap;transition:opacity .5s';
+  ui.appendChild(rot); const rotCheck = () => { rot.style.opacity = innerWidth < innerHeight ? 1 : 0; }; rotCheck(); addEventListener('resize', rotCheck);
+  // small buttons up top: respawn, mic on/off, take a photo with the Dark Cam
+  const sb = document.createElement('div'); sb.style.cssText = 'position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(max(18px,env(safe-area-inset-bottom,0px)) + 152px);display:flex;gap:8px;pointer-events:auto';
+  sb.innerHTML = '<button data-k="KeyR" title="Respawn">⟲</button><button data-k="KeyM" title="Mic">🎤</button><button data-k="KeyP" title="Photo">📷</button>';
+  for (const b of sb.children) { b.style.cssText = 'width:44px;height:44px;border-radius:50%;border:2px solid #9b5cff;background:rgba(20,10,40,.75);color:#fff;font-size:19px;touch-action:none;padding:0';
+    b.addEventListener('pointerdown', e => { e.preventDefault(); ensureAudio(); const code = b.dataset.k; dispatchEvent(new KeyboardEvent('keydown', { code })); setTimeout(() => dispatchEvent(new KeyboardEvent('keyup', { code })), 120); }); }
+  ui.appendChild(sb);
+  // near the COMPUTAH: TYPE opens the phone's own keyboard, arrows move through the menu
+  const cbar = document.createElement('div'); cbar.style.cssText = 'position:absolute;left:50%;top:calc(max(10px,env(safe-area-inset-top,0px)) + 100px);transform:translateX(-50%);display:none;gap:8px;pointer-events:auto';
+  cbar.innerHTML = '<button data-c="type">⌨ TYPE</button><button data-c="UP">▲</button><button data-c="DOWN">▼</button><button data-c="ENTER">OK</button>';
+  for (const b of cbar.children) b.style.cssText = 'height:52px;min-width:52px;padding:0 10px;border-radius:12px;border:3px solid #5ef2ff;background:rgba(20,10,40,.8);color:#5ef2ff;font:16px "Lilita One",system-ui,sans-serif;touch-action:none';
+  ui.appendChild(cbar);
+  const tin = document.createElement('input'); tin.setAttribute('autocapitalize', 'characters'); tin.setAttribute('autocomplete', 'off'); tin.setAttribute('autocorrect', 'off'); tin.spellcheck = false;
+  tin.style.cssText = 'position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;font-size:16px'; ui.appendChild(tin); tin.value = ' ';
+  tin.addEventListener('input', () => { const v = tin.value; if (v.length < 1) compKey('DEL'); else for (const ch of v.slice(1).toUpperCase()) if (/[A-Z0-9]/.test(ch)) compKey(ch); tin.value = ' '; });
+  tin.addEventListener('keydown', e => { if (e.key === 'Enter') { compKey('ENTER'); e.preventDefault(); } });
+  cbar.addEventListener('pointerdown', e => { const c = e.target.dataset?.c; if (!c) return; e.preventDefault(); ensureAudio(); if (c === 'type') { tin.value = ' '; tin.focus(); } else compKey(c); });
+  setInterval(() => { const on = nearComp() && !BT.active; cbar.style.display = on ? 'flex' : 'none'; sb.style.display = BT.active ? 'none' : 'flex'; if (!on && document.activeElement === tin) tin.blur(); }, 300);
+  let fsTried = false;
+  addEventListener('pointerdown', () => { if (fsTried) return; fsTried = true; const el = document.documentElement;
+    (el.requestFullscreen?.({ navigationUI: 'hide' }) || Promise.reject()).then(() => screen.orientation?.lock?.('landscape')).catch(() => { }).finally(() => setTimeout(fitView, 400)); }, true);
   setTimeout(() => { const b = document.querySelector('#VRButton'); if (b) b.style.display = 'none'; }, 1500);
   const joy = ui.querySelector('#joy'), nub = ui.querySelector('#nub'); let joyId = null;
   const joyMove = e => { const r = joy.getBoundingClientRect(); let dx = (e.clientX - r.left - 70) / 55, dy = (e.clientY - r.top - 70) / 55; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } TOUCH.x = dx; TOUCH.y = dy; nub.style.transform = `translate(${dx * 45}px,${dy * 45}px)`; };
@@ -3126,8 +3156,8 @@ if (DEVICE === 'mobile') {
   joy.addEventListener('pointerup', joyEnd); joy.addEventListener('pointercancel', joyEnd);
   ui.querySelectorAll('#tbtns button').forEach(b => b.addEventListener('pointerdown', e => {
     e.preventDefault(); ensureAudio(); const k = b.dataset.k;
-    if (k === 'jump') { keys.Space = true; setTimeout(() => { keys.Space = false; }, 160); if (BT.active) btSlap(); }
-    else { dispatchEvent(new KeyboardEvent('keydown', { code: k })); setTimeout(() => dispatchEvent(new KeyboardEvent('keyup', { code: k })), 100); }
+    const code = k === 'jump' ? 'Space' : k;
+    dispatchEvent(new KeyboardEvent('keydown', { code })); setTimeout(() => dispatchEvent(new KeyboardEvent('keyup', { code })), 160);
   }));
   // drag anywhere else to look; a quick tap presses whatever 3D key/button you tapped
   const looks = new Map(); const cvs = renderer.domElement; cvs.style.touchAction = 'none';
