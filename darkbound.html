@@ -38,7 +38,8 @@
   • Push down hard and fling your arms to jump<br>
   • Right stick: snap turn &nbsp;•&nbsp; B / Y: respawn<br>
   • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
-  • Dark Cam: grab it with grip, trigger = photo, A = next camera mode<br>
+  • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
+  • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
   <hr>
   <b>Desktop preview:</b> click to look, WASD move, Space jump, Shift run, R respawn, <b>C</b> camera (first / behind / front), <b>M</b> mic on / mute, <b>V</b> camera view, <b>G</b> camera mode (shoulder / selfie / orbit / boss), <b>P</b> photo, <b>E</b> or click: summon a boss at a statue / hit the boss
@@ -493,6 +494,7 @@ addEventListener('resize', () => { camera.aspect = thirdCam.aspect = innerWidth 
 
 // ================= MULTIPLAYER (PeerJS: first player in a room hosts, others join) =================
 const params = new URLSearchParams(location.search);
+const SPECTATE = params.has('cam'); // PC Dark Cam viewer: watch (not play)
 const ROOM = (params.get('room') || 'lobby').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'lobby';
 const ROOM_ID = 'darkbound-v1-' + ROOM;
 const PALETTE = [0xff5c8a, 0x5ef2ff, 0xffd447, 0x9b5cff, 0x6dff8a, 0xff8a3d];
@@ -582,8 +584,8 @@ function makeGorilla(color) {
 
   // body (yaw only)
   const body = new THREE.Group(); root.add(body);
-  part(body, S(0.24, 24, 18), fur, null, [1.05, 1.1, 0.82]);                 // torso
-  part(body, S(0.17), skinLight, [0, 0.0, -0.12], [1.05, 1.1, 0.62], 0.01); // chest
+  part(body, S(0.24, 24, 18), fur, null, [1.1, 0.82, 0.85]);                 // torso: short and round
+  part(body, S(0.17), skinLight, [0, -0.01, -0.13], [1.05, 0.85, 0.62], 0.01); // chest
   // no legs (Gorilla Tag style). Body physics: the torso hangs under the neck with gravity, swings, and lands on things
   const bp = new THREE.Vector3(), bv = new THREE.Vector3(); let bInit = false;
   const _neck = new THREE.Vector3(), _rest = new THREE.Vector3(), _tilt = new THREE.Quaternion(), _yawQ = new THREE.Quaternion(), _bd = new THREE.Vector3(), _ft = new THREE.Vector3();
@@ -594,12 +596,14 @@ function makeGorilla(color) {
     return { side, palm, shoulder: part(root, S(0.085), fur), upper: limb(root, 0.058, 0.05, fur), elbow: part(root, S(0.052), fur), fore: limb(root, 0.05, 0.072, fur), hand: makeHand(root, side, palm, skinDark, fur) };
   });
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
+  const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
+  const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
   let selfHidden = false;
 
   return {
     root, head, body,
     // first person: hide your own body + shoulders (they'd block your view); arms and hands stay
-    setSelfView(fp) { selfHidden = fp; body.visible = !fp; for (const A of arms) A.shoulder.visible = !fp; },
+    setSelfView(fp) { selfHidden = fp; body.visible = !fp; neck.visible = !fp; for (const A of arms) A.shoulder.visible = !fp; },
     get selfHidden() { return selfHidden; },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
@@ -608,23 +612,26 @@ function makeGorilla(color) {
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
       // --- body gravity ---
       _neck.copy(p.h); _neck.y -= 0.17;
-      _rest.copy(_neck); _rest.y -= 0.25;
+      _rest.copy(_neck); _rest.y -= 0.17;
       if (!bInit || bp.distanceTo(_neck) > 2) { bp.copy(_rest); bv.set(0, 0, 0); bInit = true; }  // teleports / respawns
       bv.y -= G * dt;                                                   // gravity pulls the body down
       bv.addScaledVector(_bd.copy(_rest).sub(bp), 90 * dt);             // springy hang under the neck
       bv.multiplyScalar(Math.exp(-7 * dt));
       bp.addScaledVector(bv, dt);
       _bd.copy(bp).sub(_neck); const L = _bd.length();                  // stay attached to the neck
-      if (L > 0.29) bp.copy(_neck).addScaledVector(_bd, 0.29 / L);       // stays joined to the head: only a small swing
-      else if (L < 0.2) bp.copy(_neck).addScaledVector(_bd.lengthSq() > 1e-8 ? _bd : _bd.set(0, -1, 0), 0.2 / Math.max(L, 1e-4));
-      _ft.copy(bp); if (pushOut(bp, 0.26)) { _ft.sub(bp).normalize(); const vn = bv.dot(_ft); if (vn > 0) bv.addScaledVector(_ft, -vn); } // land on the ground
+      if (L > 0.2) bp.copy(_neck).addScaledVector(_bd, 0.2 / L);         // stays tucked under the head: only a small swing
+      else if (L < 0.13) bp.copy(_neck).addScaledVector(_bd.lengthSq() > 1e-8 ? _bd : _bd.set(0, -1, 0), 0.13 / Math.max(L, 1e-4));
+      _ft.copy(bp); if (pushOut(bp, 0.21)) { _ft.sub(bp).normalize(); const vn = bv.dot(_ft); if (vn > 0) bv.addScaledVector(_ft, -vn); } // land on the ground
       _bd.copy(_neck).sub(bp).normalize();                              // lean the torso along the hang
       _yawQ.setFromAxisAngle(_up, yaw); _tilt.setFromUnitVectors(_up, _bd);
       body.position.copy(bp); body.quaternion.copy(_tilt).multiply(_yawQ);
+      _nk0.set(0, 0.08, 0).applyQuaternion(body.quaternion).add(bp);   // top of the body…
+      _nk1.set(0, -0.1, 0.02).applyQuaternion(p.q).add(p.h);            // …to the bottom of the head
+      stretch(neck, _nk0, _nk1);
       for (const A of arms) {
         const hp = A.side < 0 ? p.l : p.r, hq = A.side < 0 ? p.lq : p.rq;
         A.hand.position.copy(hp); A.hand.quaternion.copy(hq);
-        _gsh.set(A.side * 0.22, 0.1, 0.02).applyQuaternion(body.quaternion).add(body.position); // shoulder: part of the body, on its upper sides (like Gorilla Tag)
+        _gsh.set(A.side * 0.23, 0.06, 0.02).applyQuaternion(body.quaternion).add(body.position); // shoulder: part of the body, on its upper sides (like Gorilla Tag)
         _gwr.set(0, 0.008, 0.075).applyQuaternion(hq).add(hp);
         _gbd.set(A.side * 0.55, -0.75, 0.25).applyAxisAngle(_up, yaw);            // elbows hang down and a little out
         const reach = _gsh.distanceTo(_gwr), k = Math.max(1, reach / ((ARM1 + ARM2) * 0.96)); // arms stretch instead of popping off
@@ -648,6 +655,7 @@ function applyState(d) {
   const t = r.t;
   t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
+  if (d.kf) r.kf = d.kf; r.color = d.c;
   if (d.kp && d.kq) { (r.kp ||= new THREE.Vector3()).fromArray(d.kp); (r.kq ||= new THREE.Quaternion()).fromArray(d.kq); }
   if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
   r.seen = performance.now();
@@ -763,15 +771,29 @@ function livGrabUpdate() {
   if (!renderer.xr.isPresenting) return;
   for (const h of hands) {
     const gp = h.source?.gamepad; if (!gp) continue;
-    const squeeze = !!gp.buttons[1]?.pressed;
+    const squeeze = !!gp.buttons[1]?.pressed, stick = !!gp.buttons[3]?.pressed;
     h.grip.getWorldQuaternion(_lh);
-    if (squeeze && !h.sqHeld && !liv.held && h.last.distanceTo(livObj.position) < 0.3) { // grab it
-      liv.held = h; liv.mode = 'held'; drawLivHud();
+    if (squeeze && !h.sqHeld && !liv.held && h.last.distanceTo(livObj.position) < 0.45) { // grab it from where it floats
+      liv.held = h; liv.stick = false; liv.mode = 'held'; drawLivHud();
       const inv = _lh.clone().invert();
       liv.offP.copy(livObj.position).sub(h.last).applyQuaternion(inv);
       liv.offQ.copy(inv).multiply(livObj.quaternion);
     }
-    if (!squeeze && liv.held === h) { liv.held = null; liv.mode = 'tripod'; drawLivHud(); } // let go: it stays put
+    if (stick && !h.stickHeld) { // thumbstick click: Dark Cam jumps into this hand, selfie-stick style (click again to leave it floating there)
+      if (liv.held === h && liv.stick) { liv.held = null; liv.stick = false; liv.mode = 'tripod'; banner('DARK CAM: LEFT IN THE AIR', '', 1.2); }
+      else {
+        livObj.position.copy(h.last); livObj.position.y += 0.06;
+        _lm.lookAt(livObj.position, myPose.h, _up); livObj.quaternion.setFromRotationMatrix(_lm); // lens looks at you
+        const inv = _lh.clone().invert();
+        liv.offP.copy(livObj.position).sub(h.last).applyQuaternion(inv);
+        liv.offQ.copy(inv).multiply(livObj.quaternion);
+        liv.held = h; liv.stick = true; liv.mode = 'held'; banner('DARK CAM IN YOUR HAND', 'TRIGGER = PHOTO • CLICK STICK = LET GO', 1.8);
+        h.source.gamepad?.hapticActuators?.[0]?.pulse?.(0.5, 60);
+      }
+      drawLivHud();
+    }
+    h.stickHeld = stick;
+    if (!squeeze && liv.held === h && !liv.stick) { liv.held = null; liv.mode = 'tripod'; drawLivHud(); } // let go: it stays put
     h.sqHeld = squeeze;
     if (liv.held === h) {
       livObj.position.copy(liv.offP).applyQuaternion(_lh).add(h.last);
@@ -807,7 +829,7 @@ function renderFrom(cam, target) { // draw the scene from the camcorder, showing
   const rootV = me.root.visible, headV = me.head.visible, objV = livObj.visible, xrOn = renderer.xr.enabled;
   const hv = camHide.map(m => m.visible); for (const m of camHide) m.visible = false;
   const selfV = me.selfHidden; me.setSelfView(false); // the camera films your whole gorilla
-  me.root.visible = true; me.head.visible = true; livObj.visible = false;
+  me.root.visible = !SPECTATE; me.head.visible = true; livObj.visible = false;
   const asp = target ? target.width / target.height : innerWidth / innerHeight; if (cam.aspect !== asp) { cam.aspect = asp; cam.updateProjectionMatrix(); }
   const prevRT = renderer.getRenderTarget(); // in VR this is the headset's own framebuffer - must go back to it
   renderer.xr.enabled = false; renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(prevRT); renderer.xr.enabled = xrOn;
@@ -816,10 +838,10 @@ function renderFrom(cam, target) { // draw the scene from the camcorder, showing
 }
 // the camcorder's little screen: 15 fps in VR (lighter on the Quest), 30 on a computer
 function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < (renderer.xr.isPresenting ? 1 / 15 : 1 / 30)) return; liv.feedT = 0; renderFrom(livCam, livRT); }
-function takePhoto() {
+function takePhoto(cam = livCam) {
   try {
     const W = 1920, H = 1080, rt = new THREE.WebGLRenderTarget(W, H); rt.texture.colorSpace = THREE.SRGBColorSpace;
-    const pc = livCam.clone(); pc.aspect = W / H; pc.updateProjectionMatrix();
+    const pc = cam.clone(); pc.aspect = W / H; pc.updateProjectionMatrix();
     renderFrom(pc, rt);
     const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px); rt.dispose();
     const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H; const c2 = cvs.getContext('2d'), img = c2.createImageData(W, H);
@@ -846,7 +868,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion) };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1) };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -895,6 +917,7 @@ function joinAsClient() {
 }
 setInterval(netTick, 50); // 20 Hz, independent of the render loop
 function netTick() {
+  if (SPECTATE) return; // the viewer watches; it isn't a player
   const s = myState(); window.__dbg.tx++;
   if (net.isHost) broadcast(s);
   else if (net.hostConn?.open) net.hostConn.send(s);
@@ -1556,6 +1579,70 @@ function updateBoss(dt, t) {
 }
 
 
+// ================= DARK CAM VIEWER (PC: open the game with ?cam to watch a player's Dark Cam live, like LIV) =================
+const SPEC = { idx: 0, cam: new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 400), rec: null, chunks: [], ui: null, lastLabel: '' };
+if (SPECTATE) {
+  document.getElementById('hud').style.display = 'none';
+  const css = document.createElement('style');
+  css.textContent = `#spec{position:fixed;inset:0;pointer-events:none;z-index:7;font:bold 15px ui-monospace,Consolas,monospace;color:#fff}
+#spec .top{position:absolute;left:16px;top:14px;background:rgba(7,4,15,.7);border:2px solid #9b5cff;padding:8px 12px;border-radius:6px}
+#spec .top b{color:#5ef2ff}#spec .top i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-left:6px}
+#spec .bar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:auto}
+#spec button{font:bold 15px ui-monospace,Consolas,monospace;color:#07121a;background:#5ef2ff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+#spec button.rec{background:#ff3b6b;color:#fff}#spec button:focus-visible{outline:3px solid #ffd447;outline-offset:2px}
+#spec .recdot{position:absolute;right:18px;top:16px;color:#ff3b6b;display:none}#spec.recording .recdot{display:block}`;
+  document.head.appendChild(css);
+  const ui = document.createElement('div'); ui.id = 'spec';
+  ui.innerHTML = `<div class="top">DARK CAM VIEWER • ${VERSION} • ROOM <b>${ROOM.toUpperCase()}</b><br><span class="who">Waiting for a player in this room…</span></div>
+<div class="recdot">● REC</div>
+<div class="bar"><button data-a="next">Next player (N)</button><button data-a="photo">Photo (P)</button><button data-a="rec">Record (R)</button><button data-a="full">Fullscreen (F)</button></div>`;
+  document.body.appendChild(ui); SPEC.ui = ui;
+  ui.addEventListener('click', e => { const a = e.target.closest('button')?.dataset.a; if (a) specAction(a); });
+  addEventListener('keydown', e => {
+    const a = { KeyN: 'next', KeyP: 'photo', KeyR: 'rec', KeyF: 'full' }[e.code];
+    if (a) { specAction(a); e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+  const hideVR = () => { const b = document.querySelector('#VRButton'); if (b) b.style.display = 'none'; vrStart.hidden = true; };
+  setTimeout(hideVR, 0); setTimeout(hideVR, 1500);
+}
+function specList() { return [...remotes.values()].filter(r => r.cam); }
+function specTarget() { const l = specList(); if (!l.length) return null; SPEC.idx = ((SPEC.idx % l.length) + l.length) % l.length; return l[SPEC.idx]; }
+function specAction(a) {
+  if (a === 'next') SPEC.idx++;
+  if (a === 'photo') { const r = specTarget(); if (r) { r.cam.visible = false; takePhoto(SPEC.cam); r.cam.visible = true; } }
+  if (a === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
+  if (a === 'rec') {
+    if (SPEC.rec) { SPEC.rec.stop(); return; }
+    try {
+      const mime = ['video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+      const rec = new MediaRecorder(renderer.domElement.captureStream(30), mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : {});
+      SPEC.chunks = []; rec.ondataavailable = e => { if (e.data.size) SPEC.chunks.push(e.data); };
+      rec.onstop = () => {
+        const b = new Blob(SPEC.chunks, { type: 'video/webm' }), u = URL.createObjectURL(b), l = document.createElement('a');
+        l.href = u; l.download = 'darkbound-' + new Date().toISOString().replace(/[:.]/g, '-') + '.webm'; document.body.appendChild(l); l.click(); l.remove();
+        setTimeout(() => URL.revokeObjectURL(u), 5000);
+        SPEC.rec = null; SPEC.ui.classList.remove('recording'); SPEC.ui.querySelector('[data-a=rec]').classList.remove('rec'); SPEC.ui.querySelector('[data-a=rec]').textContent = 'Record (R)';
+      };
+      rec.start(500); SPEC.rec = rec;
+      SPEC.ui.classList.add('recording'); const btn = SPEC.ui.querySelector('[data-a=rec]'); btn.classList.add('rec'); btn.textContent = 'Stop + save (R)';
+    } catch (e) { banner('CAN\'T RECORD HERE', 'this browser has no video recorder', 2); }
+  }
+}
+const _specT = new THREE.Vector3();
+function renderSpectator(t) {
+  const r = specTarget(), cam = SPEC.cam;
+  const label = r ? 'Watching <i style="background:#' + new THREE.Color(r.color || 0xffffff).getHexString() + '"></i> player ' + (SPEC.idx + 1) + ' of ' + specList().length + "'s Dark Cam" : 'Waiting for a player in this room…';
+  if (label !== SPEC.lastLabel) { SPEC.lastLabel = label; SPEC.ui.querySelector('.who').innerHTML = label; }
+  if (r) {
+    cam.position.copy(r.cam.position); cam.quaternion.copy(r.cam.quaternion);
+    const fov = r.kf || 72; if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  } else { // nobody yet: slow fly-around of the spawn
+    cam.position.set(Math.sin(t * 0.1) * 22, 9, Math.cos(t * 0.1) * 22); cam.lookAt(_specT.set(0, 3, 0));
+  }
+  const asp = innerWidth / innerHeight; if (cam.aspect !== asp) { cam.aspect = asp; cam.updateProjectionMatrix(); }
+  if (r) r.cam.visible = false; renderer.render(scene, cam); if (r) r.cam.visible = true;
+}
+
 window.__boss = { B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
@@ -1642,7 +1729,8 @@ renderer.setAnimationLoop(() => {
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.rotation.x += m.userData.spin * 0.5 * dt; }
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
-  if (liv.view && !renderer.xr.isPresenting) renderFrom(livCam, null);
+  if (SPECTATE) renderSpectator(t);
+  else if (liv.view && !renderer.xr.isPresenting) renderFrom(livCam, null);
   else if (thirdPerson && !renderer.xr.isPresenting) {
     _e.setFromQuaternion(myPose.q, 'YXZ');
     const sd = thirdPerson === 2 ? -1.6 : 2.4;
