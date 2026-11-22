@@ -252,7 +252,7 @@ addBox(-61, 0, 0, 2, 14, 120, COL.wall, EDGE.violet);
 addBox(61, 0, 0, 2, 14, 120, COL.wall, EDGE.violet);
 
 // --- SOUTH-EAST: the boss arena ---
-const AX = 30, AZ = 32, FY = 0.15, AH = 9; // centre, floor top, half-size of the fight zone
+let AX = 30, AZ = 32; const FY = 0.15, AH = 9; // centre (moves to a chapter map's arena for story bosses), floor top, half-size of the fight zone
 addBox(AX, 0, AZ, 22, FY, 22, COL.stoneHi, EDGE.pink);
 for (const [x, z, sx, sz] of [
   [AX - 6.5, AZ - 11, 9, 0.4], [AX + 6.5, AZ - 11, 9, 0.4],   // north rim, gate in the middle
@@ -345,6 +345,49 @@ for (const [x, z, sx, sz, c] of [[0, -9, 18, 0.5, 0xffd6ea], [0, 9, 18, 0.5, 0xd
 for (const [x, z, h, c] of [[-5.5, -5.5, 2.2, 0xffc2dd], [5.5, -5.5, 3, 0xbfe6ff], [-5.5, 5.5, 2.6, 0xffeaa8], [5.5, 5.5, 1.8, 0xc4ffd6]]) addBox(LX + x, 0, LZ + z, 1.4, h, 1.4, c, EDGE.cyan); // pastel blocks to climb
 addBox(LX, 0, LZ - 4.6, 1.3, 0.55, 0.9, 0x24222e, EDGE.cyan);                                    // the dark desk (it doesn't belong here)
 
+// --- STORY CHAPTERS 3-6: each one its own big map (floating islands, guards on the way, the boss arena at the end) ---
+const CH_MAPS = {};
+{
+  const THEMES = {
+    3: { x: -210, z: 50, dir: 1, title: 'THE GLOOM GARDENS', floor: 0x5a4a7a, arena: 0x7a6a9e, edge: EDGE.violet, enc: ['gloom', 'gloom', 'bat'], deco: 'gloom' },
+    4: { x: 210, z: 50, dir: 1, title: 'THE PRISM HALLS', floor: 0x55658a, arena: 0x7a8ab0, edge: EDGE.cyan, enc: ['bat', 'gloom', 'bat'], deco: 'prism' },
+    5: { x: -210, z: -50, dir: -1, title: 'THE RUST WORKS', floor: 0x6a5048, arena: 0x8a6a58, edge: EDGE.gold, enc: ['crab', 'bat', 'crab'], deco: 'rust' },
+    6: { x: 210, z: -50, dir: -1, title: 'THE HOLLOW THRONE', floor: 0x3a2a4a, arena: 0x54406a, edge: EDGE.pink, enc: ['gloom', 'bat', 'crab'], deco: 'throne' },
+  };
+  for (const [ns, T] of Object.entries(THEMES)) {
+    const n = +ns; let sd = n * 977; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    const isl = [], stones = [];
+    const island = (cx, top, cz, w, d, col = T.floor) => { addBox(cx, top - 0.6, cz, w, 0.6, d, col, T.edge); const o = { x: cx, y: top, z: cz, w, d }; isl.push(o); return o; };
+    const link = (a, b, kind) => { // stepping stones or a plank bridge from island a's edge to island b's edge
+      const z0 = a.z + T.dir * a.d / 2, z1 = b.z - T.dir * b.d / 2, x0 = a.x, x1 = b.x, L = Math.hypot(z1 - z0, x1 - x0);
+      const bridge = kind === 'bridge', k = Math.max(2, Math.ceil(L / (bridge ? 1.6 : 3.1)));
+      for (let j = 0; j < k; j++) {
+        const t = (j + 0.5) / k, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t, top = a.y + (b.y - a.y) * t;
+        if (bridge) addBox(x, top - 0.25, z, 2.4, 0.25, Math.abs(z1 - z0) / k + 0.35, COL.trunk, EDGE.gold);
+        else addBox(x, top - 0.4, z, 2.3, 0.4, 2.3, T.floor, T.edge);
+        stones.push([x, top, z]);
+      }
+    };
+    let cur = island(T.x, 0, T.z, 13, 13), y = 0;
+    const N = 8;
+    for (let i = 1; i <= N; i++) {
+      const gap = 7 + R() * 5, w = 11 + R() * 7, d = 10 + R() * 6, lateral = Math.sin(i * 1.15 + n) * 13;
+      const ny = i === N ? 0 : Math.max(0, Math.min(5.4, y + (R() < 0.45 ? -1 : 1) * (0.9 + Math.floor(R() * 3) * 0.9)));
+      const nxt = island(T.x + lateral, ny, cur.z + T.dir * (cur.d / 2 + gap + d / 2), w, d);
+      link(cur, nxt, i % 3 === 1 ? 'bridge' : 'stones'); cur = nxt; y = ny;
+    }
+    // the arena: a big platform with the fight ring on it (same size as the lobby arena, so every boss fits)
+    const plat = island(T.x, 0, cur.z + T.dir * (cur.d / 2 + 9 + 17), 34, 34); link(cur, plat, 'bridge');
+    const ax = plat.x, az = plat.z;
+    addBox(ax, 0, az, 22, FY, 22, T.arena, T.edge);
+    const gz = T.dir > 0 ? -11 : 11; // the gate faces the way you came in
+    for (const [x, z, sx, sz] of [[-6.5, gz, 9, 0.4], [6.5, gz, 9, 0.4], [0, -gz, 22, 0.4], [-11, 0, 0.4, 22], [11, 0, 0.4, 22]]) addBox(ax + x, FY, az + z, sx, 0.7, sz, T.floor, T.edge);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) { addBox(ax + sx * 9.6, FY, az + sz * 9.6, 1.2, 5, 1.2, T.floor, T.edge); addBox(ax + sx * 9.6, FY + 5, az + sz * 9.6, 1.8, 0.3, 1.8, T.arena, T.edge); }
+    const enc = [2, 4, 6].map((ii, k) => ({ type: T.enc[k], p: new THREE.Vector3(isl[ii].x, isl[ii].y + 0.9, isl[ii].z), alive: true, cd: 0, m: null }));
+    const coins = [1, 3, 5, 7].flatMap(ii => { const o = isl[ii]; return [[o.x + o.w / 2 - 1.4, o.y + 0.7, o.z + o.d / 2 - 1.4], [o.x - o.w / 2 + 1.4, o.y + 0.7, o.z - o.d / 2 + 1.4]]; });
+    CH_MAPS[n] = { n, T, start: new THREE.Vector3(T.x, 0, T.z), face: T.dir > 0 ? Math.PI : 0, isl, stones, arena: [ax, az], gateZ: az + gz, enc, coins };
+  }
+}
 // --- THE CHAPTER ROOM: where you go after the whole story is done (replay any chapter) ---
 const CRX = 330, CRZ = 0;
 addBox(CRX, -0.5, CRZ, 18, 0.5, 18, COL.stoneHi, EDGE.violet);                                                  // floor
@@ -1764,9 +1807,11 @@ function bossNet(d) {
   else if (d.t === 'bhp' && !bossAuth()) syncBoss(d);
   else if (d.t === 'bend' && !bossAuth()) endBoss(!!d.win);
 }
+const STORY_ARENA = { warden: 3, witch: 4, colossus: 5, king: 6 };
+function setArenaFor(def) { const M = def && CH_MAPS[STORY_ARENA[def.id]]; [AX, AZ] = M ? M.arena : [30, 32]; HOME.set(AX, FY + 4.6, AZ - 5); }
 function startBoss(i, st) {
   if (B.def) clearBoss();
-  const def = BOSSES[i]; B.def = def; B.i = i;
+  const def = BOSSES[i]; setArenaFor(def); B.def = def; B.i = i;
   B.model = makeBossModel(def); B.model.root.scale.setScalar(0.01); scene.add(B.model.root);
   B.pos.copy(HOME); B.pos.y = FY - 1; B.model.root.position.copy(B.pos);
   B.maxHp = Math.round(def.hp * (1 + 0.5 * remotes.size)); B.hp = B.maxHp;
@@ -3971,26 +4016,113 @@ function refreshSbEntries() { // portals to the next boss chapter: in the Lanter
   SB.entries.push(storyPortal(SX + 5.4, 1.4, SZ - 1.5, 'CHAPTER ' + n, SB_CH[n].title, 0xff8a3d));
 }
 refreshSbEntries();
-function startBossChapter(n) {
-  if (!n) return;
-  if (B.def && B.phase === 'dead') { setTimeout(() => startBossChapter(n), 1000); return; }
-  if (B.def) { banner('THE ARENA IS BUSY', 'SOMEONE IS FIGHTING A BOSS. TRY AGAIN SOON', 2.5, '#ff8a3d'); return; }
-  SB.active = n; teleport(AX - 7, 0.3, AZ + 6, -0.57);
-  bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null;
-  CL.pos.set(AX - 8.5, 1.2, AZ + 7.5); CL.goal.set(AX - 8.6, 1.2, AZ + 8.6);
-  banner('CHAPTER ' + n, SB_CH[n].title, 3, '#ff8a3d'); sfx(70, 40, 1.2, 'sawtooth', 0.2);
-  say([...SB_CH[n].intro, SB_CH[n].guards], () => runGuardFights(n, SB_CH[n].fights.slice()));
-}
 function storyBossWon() { // called when a boss is beaten
   const n = SB.active; if (!n || B.def !== BOSSES[SB_CH[n].boss]) return; SB.active = 0;
   try { localStorage.setItem('darkbound-story-' + n, 'done'); } catch (e) { }
   setTimeout(() => say(SB_CH[n].win, () => { banner('CHAPTER ' + n + ' COMPLETE', n < 6 ? 'ON TO CHAPTER ' + (n + 1) + '!' : 'THE END... FOR NOW', 3.5, '#6dff9a'); addBananas(n === 6 ? 50 : 15, 'CHAPTER ' + n); refreshSbEntries();
     if (n < 6) chainTo(() => startBossChapter(n + 1), 'CHAPTER ' + (n + 1)); else setTimeout(() => { goChapterRoom(); banner('THANKS FOR PLAYING THE STORY', 'REPLAY ANY CHAPTER HERE', 4, '#ffb070'); }, 6000); }), 2500);
 }
+// ================= CHAPTER MAPS 3-6: dressing + how a chapter plays (explore, beat the guards, the boss waits at the end) =================
+// ---- each map gets its own look (decorations merged into a few meshes per map, so the Quest stays fast) ----
+for (const M of Object.values(CH_MAPS)) {
+  let sd = M.n * 31; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const B2 = new Map(); const put = (mat, g) => (B2.get(mat) || B2.set(mat, []).get(mat)).push(g);
+  const at = (g, x, y, z, ry = 0, rx = 0, rz = 0) => { g.rotateX(rx); g.rotateZ(rz); g.rotateY(ry); g.translate(x, y, z); return g; };
+  const T = M.T, acc = new THREE.MeshBasicMaterial({ color: T.edge });
+  const matA = toon(T.floor, 0.1), matB = toon(new THREE.Color(T.floor).multiplyScalar(0.6).getHex(), 0.1);
+  const spots = []; // decoration spots near island edges (the middle stays clear for walking and fighting)
+  M.isl.forEach((o, i) => { if (i === M.isl.length - 1) return; for (let k = 0; k < 4; k++) { const sx = R() < 0.5 ? -1 : 1; spots.push([o.x + sx * (o.w / 2 - 1 - R() * 1.5), o.y, o.z + (R() - 0.5) * (o.d - 3)]); } });
+  const mush = toon(0x9b5cff, 0.25), stem = toon(0xe8dcff, 0.15), hedge = toon(0x3b5a4a, 0.1), crys = [toon(0x5ef2ff, 0.3), toon(0xff7ab8, 0.3)], rust = toon(0x8a4a2a, 0.1), metal = toon(0x5a5270, 0.2), dark = toon(0x1a1222, 0.1), red = toon(0xc2203f, 0.15), fire = new THREE.MeshBasicMaterial({ color: 0xffb347 });
+  for (const [x, y, z] of spots) {
+    const r = R();
+    if (T.deco === 'gloom') {
+      if (r < 0.6) { const h = 1.2 + R() * 2.4, cr = 0.8 + R() * 1.2; put(stem, at(new THREE.CylinderGeometry(0.18 * cr, 0.28 * cr, h, 8), x, y + h / 2, z)); put(mush, at(new THREE.SphereGeometry(cr, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), x, y + h - 0.05, z));
+        for (let k = 0; k < 4; k++) { const a = R() * 6.28; put(acc, at(new THREE.SphereGeometry(0.09 * cr, 6, 5), x + Math.cos(a) * cr * 0.6, y + h + cr * 0.55, z + Math.sin(a) * cr * 0.6)); } }
+      else put(hedge, at(new THREE.BoxGeometry(2.2, 1.1, 0.9), x, y + 0.55, z, R() * 3));
+    } else if (T.deco === 'prism') {
+      const n2 = 3 + Math.floor(R() * 3); for (let k = 0; k < n2; k++) { const h = 0.8 + R() * 2.4; put(crys[k % 2], at(new THREE.ConeGeometry(0.22 + R() * 0.2, h, 5), x + (R() - 0.5) * 0.9, y + h / 2 - 0.1, z + (R() - 0.5) * 0.9, R() * 3, (R() - 0.5) * 0.5, (R() - 0.5) * 0.5)); }
+      if (r < 0.25) { put(matB, at(new THREE.BoxGeometry(0.6, 3.6, 0.6), x - 1.4, y + 1.8, z)); put(matB, at(new THREE.BoxGeometry(0.6, 3.6, 0.6), x + 1.4, y + 1.8, z)); put(matA, at(new THREE.BoxGeometry(3.6, 0.5, 0.8), x, y + 3.8, z)); }
+    } else if (T.deco === 'rust') {
+      if (r < 0.35) put(rust, at(new THREE.CylinderGeometry(0.35, 0.35, 3.5, 10), x, y + 0.4, z, R() * 3, 0, Math.PI / 2));
+      else if (r < 0.65) put(metal, at(new THREE.TorusGeometry(0.8, 0.22, 6, 10), x, y + 0.95, z, R() * 3));
+      else { const s2 = 0.6 + R() * 0.5; put(rust, at(new THREE.BoxGeometry(s2, s2, s2), x, y + s2 / 2, z, R())); put(metal, at(new THREE.BoxGeometry(s2 * 0.8, s2 * 0.8, s2 * 0.8), x + 0.2, y + s2 + s2 * 0.4, z, R())); }
+    } else {
+      if (r < 0.5) { put(dark, at(new THREE.BoxGeometry(0.9, 6.5, 0.9), x, y + 3.25, z)); put(red, at(new THREE.PlaneGeometry(0.8, 2.2), x + (x > M.start.x ? -0.46 : 0.46), y + 4.6, z, Math.PI / 2)); }
+      else { put(metal, at(new THREE.CylinderGeometry(0.45, 0.3, 0.8, 8), x, y + 0.4, z)); put(fire, at(new THREE.ConeGeometry(0.32, 0.8, 7), x, y + 1.15, z)); }
+    }
+  }
+  if (T.deco === 'throne') { const [ax, az] = M.arena, bz = az + (T.dir > 0 ? 9.6 : -9.6); put(dark, at(new THREE.BoxGeometry(2.4, 1, 1.6), ax, FY + 0.5, bz)); put(dark, at(new THREE.BoxGeometry(2.4, 3.2, 0.4), ax, FY + 1.6, bz + (T.dir > 0 ? 0.7 : -0.7))); put(red, at(new THREE.BoxGeometry(1.8, 0.2, 1.2), ax, FY + 1.1, bz)); }
+  for (const [mat, geos] of B2) scene.add(new THREE.Mesh(mergeGeometries(geos), mat));
+  for (const o of M.isl) islandUnder(o.x, o.y - 0.6, o.z, o.w, o.d, Math.min(14, 3 + o.w * 0.5));
+  pavement(M.arena[0], FY, M.arena[1], 22, 22, 'ring');
+  if (T.deco === 'gloom') scatter(M.isl.slice(0, -1).map(o => [o.x - o.w / 2 + 0.6, o.x + o.w / 2 - 0.6, o.z - o.d / 2 + 0.6, o.z + o.d / 2 - 0.6, o.y, 0.35, 0.15, 0.2]));
+  // home portal on the starting island, and a sign with the chapter name
+  M.home = storyPortal(M.start.x - 4.5, 1.4, M.start.z + 4.5 * -T.dir, 'HOME', 'LEAVE THE CHAPTER', 0x5ef2ff); M.home.rotation.y = M.face;
+  const lab = labelTex(null, 1024, 200); lab.draw(['CHAPTER ' + M.n, T.title, '#' + new THREE.Color(T.edge).getHexString()]);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.7), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, side: THREE.DoubleSide })); sign.position.set(M.start.x, 3.2, M.start.z + T.dir * 5.5); sign.rotation.y = M.face; scene.add(sign);
+  // guards wait on the islands (touch one to battle it)
+  for (const e of M.enc) { e.m = ENEMIES[e.type].make(); e.m.root.visible = true; e.m.root.scale.setScalar(ENEMIES[e.type].scale * 5); e.m.root.position.copy(e.p); scene.add(e.m.root); }
+  // Bound Bucks hidden on the islands
+  M.coinMeshes = M.coins.map(p => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 16), new THREE.MeshBasicMaterial({ color: 0xffd447 })); c.rotation.x = Math.PI / 2; c.position.set(...p); scene.add(c); return c; });
+}
+const CH_EXTRA = { // what Claude says when a map starts, and when you reach the arena
+  3: ['Welcome to the Gloom Gardens! The mushrooms are huge. I tried to eat one. It tried to eat me back.', 'Three guards are hiding on the islands. Beat them, then the Warden waits in the arena at the end!'],
+  4: ['The Prism Halls! Everything is shiny. I can see like nine of me. They all look confused.', 'Guards on the islands again. Then the Witch, way at the end.'],
+  5: ['The Rust Works. It squeaks. Everything squeaks. I squeak too when I am nervous. Squeak.', 'Beat the guards, then the Colossus in the big arena.'],
+  6: ['This is it. The Hollow Throne. It is very dark. I brought a snack for courage. I ate it already.', 'His three guards are out on the islands. Then... the King.'],
+};
+function startBossChapter(n) {
+  if (!n) return; const M = CH_MAPS[n]; if (!M) return;
+  if (B.def && B.phase === 'dead') { setTimeout(() => startBossChapter(n), 1000); return; }
+  SB.active = n; SB.map = M; SB.bossAsked = false; SB.remindT = 0; SB.check = new THREE.Vector3(M.start.x, 0.3, M.start.z);
+  for (const e of M.enc) { e.alive = true; e.cd = 0; e.m.root.visible = true; }
+  M.coinMeshes.forEach(c => { c.visible = true; });
+  teleport(M.start.x, 0.3, M.start.z, M.face);
+  bubM.visible = false; STORY.cur = ''; STORY.lines = []; STORY.then = null; CL.lookAt = null;
+  CL.pos.set(M.start.x + 1.6, 1.2, M.start.z); CL.goal.copy(CL.pos);
+  banner('CHAPTER ' + n, M.T.title, 3, '#ff8a3d'); sfx(70, 40, 1.2, 'sawtooth', 0.2);
+  say([...SB_CH[n].intro, ...CH_EXTRA[n]]);
+}
+const _sbv = new THREE.Vector3();
 function updateSB(dt) {
   SB.cd -= dt;
-  for (const e of SB.entries) { e.rotation.y += dt * 0.6; e.children[1].material.opacity = 0.35 + Math.sin(performance.now() / 300) * 0.15; if (SB.cd <= 0 && storyTouch(e.position, 1.0)) { SB.cd = 4; startBossChapter(nextBossChapter()); } }
-  if (SB.active && Math.hypot(myPose.h.x - AX, myPose.h.z - AZ) > 45) SB.active = 0; // you left the arena
+  const t = performance.now() / 1000;
+  for (const M of Object.values(CH_MAPS)) { // guards bob, coins spin, home portals glow (cheap: only near you)
+    if (Math.abs(myPose.h.x - M.start.x) > 120 || Math.abs(myPose.h.z - M.start.z) > 200) continue;
+    for (const e of M.enc) if (e.alive) { e.m.root.position.y = e.p.y + Math.sin(t * 2 + e.p.x) * 0.15; e.m.root.rotation.y += dt * 0.8; }
+    M.coinMeshes.forEach(c => { c.rotation.z += dt * 3; });
+    M.home.children[1].material.opacity = 0.35 + Math.sin(t * 3) * 0.15;
+    if (SB.cd <= 0 && storyTouch(M.home.position, 1.0)) { SB.cd = 3; SB.active = 0; goHomeFromStory(); }
+  }
+  const M = SB.map, n = SB.active; if (!n || !M) return;
+  const h = myPose.h;
+  if (Math.hypot(h.x - M.start.x, h.z - M.start.z) > 220) { SB.active = 0; return; } // you left the chapter
+  // Claude tags along
+  if (CL.pos.distanceTo(h) > 3.2) { _sbv.set(h.x - CL.pos.x, 0, h.z - CL.pos.z).normalize(); CL.goal.set(h.x - _sbv.x * 1.8 + _sbv.z * 1.2, h.y - 0.3, h.z - _sbv.z * 1.8 - _sbv.x * 1.2); }
+  // checkpoints: the last island you stood on
+  for (const o of M.isl) if (Math.abs(h.x - o.x) < o.w / 2 && Math.abs(h.z - o.z) < o.d / 2 && h.y > o.y && h.y < o.y + 2.5) SB.check.set(o.x, o.y + 0.3, o.z);
+  if (rig.position.y < -10) { teleport(SB.check.x, SB.check.y, SB.check.z, M.face); banner('WHOOPS!', 'CLAUDE CAUGHT YOU (HE DROPPED HIS SNACK)', 1.5, '#ffb070'); }
+  // coins
+  M.coinMeshes.forEach(c => { if (c.visible && storyTouch(c.position, 0.8)) { c.visible = false; addBananas(2, 'FOUND BOUND BUCKS'); sfx(988, 1319, 0.15, 'square', 0.08); } });
+  // guards
+  if (!BT.active) for (const e of M.enc) {
+    e.cd -= dt; if (!e.alive || e.cd > 0 || !storyTouch(e.m.root.position, 1.3)) continue;
+    startBattle(e.type, null);
+    BT.story = {
+      next: () => { e.alive = false; e.m.root.visible = false; burst(e.p, 0xffd447); const left = M.enc.filter(x => x.alive).length;
+        say([left ? 'Guard down! ' + left + ' to go!' : 'That was the last guard! The arena is open. Let\'s go!']); },
+      retry: () => { e.cd = 4; teleport(SB.check.x, SB.check.y, SB.check.z, M.face); },
+    };
+    break;
+  }
+  // the arena at the end
+  const [ax, az] = M.arena, inArena = Math.abs(h.x - ax) < 10.5 && Math.abs(h.z - az) < 10.5;
+  SB.remindT -= dt;
+  if (inArena && !SB.bossAsked) {
+    if (M.enc.some(e => e.alive)) { if (SB.remindT <= 0) { SB.remindT = 10; say(['Wait wait wait! There are still guards out there. The boss won\'t come out until they are beaten. I think. Boss rules.']); } }
+    else if (B.def && B.phase !== 'dead') { if (SB.remindT <= 0) { SB.remindT = 8; banner('A BOSS IS ALREADY OUT', 'SOMEONE ELSE IS FIGHTING ONE. WAIT A MOMENT', 2.5, '#ff8a3d'); } }
+    else if (!B.def) { SB.bossAsked = true; say(['Here it comes... act cool. ACT COOL.'], () => { if (B.def || SB.active !== n) { SB.bossAsked = false; return; } if (bossAuth()) startBoss(SB_CH[n].boss); else bsend({ t: 'bsum', b: SB_CH[n].boss }); }); }
+  }
 }
 
 // ================= BTM GRABBING (Lethal Apes style, toy-pop, no gore) =================
@@ -4313,6 +4445,7 @@ function musicArea() {
   if (BT.active) return 'battle';
   if (B.def && B.phase !== 'dead' && Math.abs(h.x - AX) < 25 && Math.abs(h.z - AZ) < 25) return 'boss';
   if (INTRO.active) return 'light';
+  if (SB.active && SB.map) return SB.active === 6 ? 'dark' : 'hollow';
   if (inDW(h)) return 'dark';
   if (Math.hypot(h.x - B3X, h.z - B3Z) < 40) return 'camp';
   if (Math.hypot(h.x - C2X, h.z - (C2Z - 16)) < 45) return 'spire';
@@ -4343,6 +4476,7 @@ const SAVE_STARS = [
   { p: [SX + 3.5, 1.4, SZ + 2.5], lines: ['The Hollow is quiet. Claude is humming off-key somewhere.', 'A warm little star. It smells like bananas, somehow.'] },
   { p: [C2X + 3.2, 1.4, C2Z + 2.5], lines: ['The broken spire creaks. You are not scared. Mostly.', 'Glittering dust floats by. You feel brave.'] },
   { p: [B3X + 4.2, 1.4, B3Z + 2.2], lines: ['The campfire crackles. Everyone here feels like family.', 'Dory waves at you from far away. You feel ready.'] },
+  ...Object.values(CH_MAPS).map(M => ({ p: [M.start.x + 4.5, 1.4, M.start.z - 4.5 * M.T.dir], lines: ['A star at the start of ' + M.T.title.toLowerCase() + '. You feel brave.', 'Claude taps the star. It boops. He giggles. You feel ready.'] })),
   { p: [AX - 7, 1.4, AZ + 6], lines: ['The arena lights flicker. Something huge is watching. Probably fine.', 'You crack your knuckles. All eight of them? Four. Whatever.'] },
 ];
 {
@@ -4355,7 +4489,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
