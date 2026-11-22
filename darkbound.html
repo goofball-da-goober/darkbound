@@ -651,7 +651,7 @@ const roomTag = () => (PUBLIC ? 'PUBLIC ' : 'PRIVATE ') + '[' + ROOM.toUpperCase
 let ROOM_ID = 'darkbound-v1-' + ROOM;
 const PALETTE = [0xff5c8a, 0x5ef2ff, 0xffd447, 0x9b5cff, 0x6dff8a, 0xff8a3d];
 // your saved info (name, color, turning, mic, volume) — set on the COMPUTAH
-const SET = Object.assign({ name: '', color: null, turn: 'snap30', mic: 'open', voiceVol: 5, sfxVol: 5 }, (() => { try { return JSON.parse(localStorage.getItem('darkbound-settings') || '{}'); } catch (e) { return {}; } })());
+const SET = Object.assign({ name: '', color: null, turn: 'snap30', mic: 'open', voiceVol: 5, sfxVol: 5, musicVol: 4 }, (() => { try { return JSON.parse(localStorage.getItem('darkbound-settings') || '{}'); } catch (e) { return {}; } })());
 const saveSettings = () => { try { localStorage.setItem('darkbound-settings', JSON.stringify(SET)); } catch (e) { } };
 let MY_COLOR = SET.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)];
 // what are you playing on? (VR headset, computer, phone or tablet)
@@ -1230,7 +1230,7 @@ function toggleCamRec() {
   liv.view = true;
   try {
     const stream = renderer.domElement.captureStream(30);
-    if (actx) { camRec.dest ||= actx.createMediaStreamDestination(); sfxOut().connect(camRec.dest); const tr = camRec.dest.stream.getAudioTracks()[0]; if (tr) stream.addTrack(tr); }
+    if (actx) { camRec.dest ||= actx.createMediaStreamDestination(); sfxOut().connect(camRec.dest); musicOut().connect(camRec.dest); const tr = camRec.dest.stream.getAudioTracks()[0]; if (tr) stream.addTrack(tr); }
     const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : {});
     camRec.chunks = []; rec.ondataavailable = e => { if (e.data.size) camRec.chunks.push(e.data); };
@@ -2264,6 +2264,7 @@ function makePortal() {
 }
 // dialogue
 function say(lines, then) { STORY.lines = lines.slice(); STORY.then = then || null; nextLine(); }
+const VOICE_OF = { CLAUDE: [300, 'square'], DORY: [880, 'triangle'] }; // goofy low beeps for Claude, bright ones for Dory
 function nextLine() {
   if (!STORY.lines.length) { STORY.cur = ''; bubM.visible = false; const f = STORY.then; STORY.then = null; if (f) f(); return; }
   let ln = STORY.lines.shift(); if (typeof ln === 'string') ln = { t: ln };
@@ -2332,7 +2333,7 @@ function updateStory(dt, t) {
   if (STORY.cur) {
     if (STORY.shown < STORY.cur.length) {
       const before = Math.floor(STORY.shown); STORY.shown = Math.min(STORY.cur.length, STORY.shown + dt * 38);
-      if (Math.floor(STORY.shown) !== before) { drawBubble(STORY.cur.slice(0, Math.floor(STORY.shown))); if (before % 3 === 0) sfx(700 + Math.random() * 300, 500, 0.04, 'triangle', 0.04); }
+      if (Math.floor(STORY.shown) !== before) { drawBubble(STORY.cur.slice(0, Math.floor(STORY.shown))); if (before % 2 === 0 && STORY.cur[before] !== ' ') { const v = VOICE_OF[STORY.spkName] || [500 + (STORY.spkName.charCodeAt(0) % 7) * 60, 'square']; sfx(v[0] * (0.94 + Math.random() * 0.12), v[0] * 0.9, 0.045, v[1], 0.045); } }
     } else if ((STORY.hold += dt) > 1.8 + STORY.cur.length * 0.035) nextLine();
   }
   // shards spin and bob
@@ -3064,6 +3065,7 @@ function btPanel(w, h, cw, ch, x, y) { const cv = document.createElement('canvas
 const btText = btPanel(BOXM - 0.02, BOXM - 0.02, 512, 512, 0, 0);   // words inside the box between turns
 const btTop = btPanel(0.56, 0.06, 1024, 110, 0, 0.3);               // enemy name, HP, calm
 const btBottom = btPanel(0.56, 0.045, 1024, 82, 0, -0.415);          // your HP, snacks, bananas
+const btTP = btPanel(0.05, 0.4, 64, 512, -0.3, 0);                     // the TP meter: fills when bullets brush past you
 const BTN_X = [-0.19, -0.063, 0.063, 0.19];
 const btBtns = BTN_X.map(x => { const p = btPanel(0.115, 0.07, 256, 156, x, -0.33); p.label = ''; p.hot = false; return p; });
 // the spark you steer, the slap timing bar
@@ -3085,6 +3087,17 @@ function drawPanelText(p, lines, border) {
 function bar(c, x, y, w, h, f, col) { c.fillStyle = '#2a1640'; c.fillRect(x, y, w, h); c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, f)), h); c.strokeStyle = '#fff'; c.lineWidth = 3; c.strokeRect(x, y, w, h); }
 function drawBtTop() { const d = BT.def; drawPanelText(btTop, [c => { c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(d.name, 20, 55); c.font = '28px "Lilita One", system-ui, sans-serif'; c.fillText('HP', 400, 40); bar(c, 450, 25, 240, 30, BT.ehp / BT.emax, d.color); c.fillText('CALM', 400, 82); bar(c, 490, 70, 200, 24, BT.calm / 100, '#6dff9a'); c.fillStyle = BT.calm >= 100 ? '#6dff9a' : '#cbbcf0'; c.fillText(BT.calm >= 100 ? 'READY TO CHILL!' : '', 720, 82); }], d.color); }
 function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = '40px "Lilita One", system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   BB ' + bananas, 610, 42); }], '#9b5cff'); }
+function drawBtTP() {
+  drawPanelText(btTP, [c => { const f = BT.tp / 100; c.fillStyle = 'rgba(10,5,25,0.92)'; c.fillRect(0, 0, 64, 512); c.fillStyle = '#3a1a10'; c.fillRect(14, 60, 36, 420);
+    c.fillStyle = f >= 1 ? '#ffd447' : '#ff8a3d'; c.fillRect(14, 60 + 420 * (1 - f), 36, 420 * f); c.strokeStyle = '#fff'; c.lineWidth = 3; c.strokeRect(14, 60, 36, 420);
+    c.fillStyle = '#ff8a3d'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText('TP', 32, 40); c.fillStyle = '#fff'; c.font = '20px "Lilita One", system-ui, sans-serif'; c.fillText(Math.floor(BT.tp) + '%', 32, 505); }]);
+}
+function btGraze() { BT.tp = Math.min(100, BT.tp + 4); BT.gz = 0.15; drawBtTP(); sfx(1500, 2100, 0.035, 'triangle', 0.045); }
+function btDamage(dmg, word) {
+  BT.ehp = Math.max(0, BT.ehp - dmg); BT.flash = 1; BT.shake = 0.5; drawBtTop(); sfx(220, 60, 0.2, 'square', 0.3); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 100);
+  if (BT.ehp <= 0) btSay([word + ' ' + dmg + ' damage!', 'The ' + BT.def.name.toLowerCase() + ' flies out of the box! You win!'], () => endBattle('win'));
+  else btSay([word + ' ' + dmg + ' damage!'], enemyTurn);
+}
 function drawBtn(i, label, enabled = true) {
   const p = btBtns[i]; p.label = label; p.enabled = enabled && !!label;
   drawPanelText(p, [c => { if (!label) return; c.fillStyle = p.hot ? '#ffd447' : enabled ? 'rgba(20,10,40,0.95)' : 'rgba(20,10,40,0.5)'; c.fillRect(0, 0, 256, 156); c.strokeStyle = enabled ? '#ffd447' : '#555'; c.lineWidth = 8; c.strokeRect(4, 4, 248, 148); c.fillStyle = p.hot ? '#1a0b2e' : enabled ? '#fff' : '#777'; c.textAlign = 'center'; c.textBaseline = 'middle'; const words = label.split(' '); c.font = 'bold ' + (label.length > 10 ? 30 : 44) + 'px "Lilita One", system-ui, sans-serif'; if (words.length > 1 && label.length > 10) { c.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 128, 58); c.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 128, 100); } else c.fillText(label, 128, 80); }]);
@@ -3095,13 +3108,13 @@ function btNext() { if (!BT.msgs.length) { BT.msg = ''; const f = BT.then; BT.th
 function setMenu() {
   BT.phase = 'menu'; btText.m.visible = true; btBar.visible = false;
   drawBtText(BT.def.flavor[Math.floor(Math.random() * BT.def.flavor.length)] + (renderer.xr.isPresenting ? ' (touch a button)' : ' (press 1-4)'));
-  ['SLAP', 'TALK', 'SNACK', 'CHILL'].forEach((l, i) => drawBtn(i, l, i !== 2 || BT.snacks > 0));
+  ['SLAP', 'TALK', 'SNACK', 'CHILL'].forEach((l, i) => drawBtn(i, l, i !== 2 || BT.snacks > 0)); drawBtTP();
 }
 function clearBtns() { for (let i = 0; i < 4; i++) drawBtn(i, ''); }
 function startBattle(type, roam) {
   if (BT.active) return;
   const d = ENEMIES[type]; BT.active = true; BT.def = d; BT.roam = roam; BT.type = type;
-  BT.hp = BT.max; BT.ehp = BT.emax = d.hp; BT.calm = 0; BT.snacks = 3; BT.atk = 0; BT.bullets = []; clearBtLasers(); BT.inv = 0;
+  BT.hp = BT.max; BT.ehp = BT.emax = d.hp; BT.calm = 0; BT.snacks = 3; BT.atk = 0; BT.tp = 0; BT.gz = 0; BT.bullets = []; clearBtLasers(); BT.inv = 0;
   // the battle opens right in front of you
   _e.setFromQuaternion(myPose.q, 'YXZ');
   btRoot.position.set(Math.sin(_e.y) * -0.75, 0, Math.cos(_e.y) * -0.75).add(myPose.h); btRoot.position.y = myPose.h.y - 0.08;
@@ -3129,7 +3142,16 @@ function endBattle(result) {
 }
 function btChoose(i) {
   if (BT.pressCd > 0) return; BT.pressCd = 0.35; sfx(660, 660, 0.06, 'square', 0.08);
+  if (BT.phase === 'slappick') { // TP moves
+    if (i === 3) { setMenu(); return; }
+    if (i === 0) { BT.phase = 'slap'; BT.barT = 0; btText.m.visible = false; btBar.visible = true; clearBtns(); return; }
+    if (i === 1 && BT.tp >= 50) { BT.tp -= 50; drawBtTP(); clearBtns(); sfx(120, 900, 0.4, 'sawtooth', 0.2); btDamage(38 + Math.floor(Math.random() * 12), 'MEGA SLAP! You wind up like a windmill...'); return; }
+    if (i === 2 && BT.tp >= 30) { BT.tp -= 30; drawBtTP(); clearBtns(); BT.calm = Math.min(100, BT.calm + 50); drawBtTop(); sfx(523, 1046, 0.4, 'triangle', 0.15);
+      btSay(['You give the ' + BT.def.name.toLowerCase() + ' a BIG gorilla hug.', BT.calm >= 100 ? 'It melts. It wants to CHILL now.' : 'It is very confused. And a bit happier.'], enemyTurn); return; }
+    return;
+  }
   if (BT.phase === 'menu') {
+    if (i === 0 && BT.tp >= 30) { BT.phase = 'slappick'; ['SLAP', 'MEGA SLAP', 'BIG HUG', 'BACK'].forEach((l, k) => drawBtn(k, l, k !== 1 || BT.tp >= 50)); drawBtText('TP moves! MEGA SLAP uses 50% TP, BIG HUG uses 30%. Brush past bullets to charge TP.'); return; }
     if (i === 0) { BT.phase = 'slap'; BT.barT = 0; btText.m.visible = false; btBar.visible = true; clearBtns(); return; }
     if (i === 1) { BT.phase = 'talkpick'; BT.def.talks.forEach((tk, k) => drawBtn(k, tk.l)); drawBtn(3, 'BACK'); drawBtText('What do you say?'); return; }
     if (i === 2) { if (BT.snacks <= 0) return; BT.snacks--; const heal = Math.min(8, BT.max - BT.hp); BT.hp += heal; drawBtBottom(); clearBtns(); sfx(523, 784, 0.2, 'triangle', 0.15); btSay(['You eat a banana. Yum. +' + heal + ' HP.'], enemyTurn); return; }
@@ -3145,15 +3167,21 @@ function btChoose(i) {
 function btSlap() { // the timing bar: slap when the line is in the gold
   if (BT.phase !== 'slap' || BT.barT < 0.08) return;
   const x = btMarker.position.x, acc = 1 - Math.min(1, Math.abs(x) / 0.22);
-  const dmg = Math.round(4 + acc * acc * 26); BT.phase = 'slapped';
-  BT.ehp = Math.max(0, BT.ehp - dmg); BT.flash = 1; BT.shake = 0.4; drawBtTop();
-  sfx(220, 60, 0.2, 'square', 0.3); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 100);
-  btBar.visible = false;
-  const word = acc > 0.85 ? 'PERFECT SLAP!' : acc > 0.5 ? 'Good slap!' : 'A little slap.';
-  if (BT.ehp <= 0) btSay([word + ' ' + dmg + ' damage!', 'The ' + BT.def.name.toLowerCase() + ' flies out of the box! You win!'], () => endBattle('win'));
-  else btSay([word + ' ' + dmg + ' damage!'], enemyTurn);
+  const dmg = Math.round(4 + acc * acc * 26); BT.phase = 'slapped'; btBar.visible = false;
+  if (acc > 0.85) { BT.tp = Math.min(100, BT.tp + 10); drawBtTP(); } // perfect slaps charge TP too
+  btDamage(dmg, acc > 0.85 ? 'PERFECT SLAP!' : acc > 0.5 ? 'Good slap!' : 'A little slap.');
 }
+const CLAUDE_HELP = [
+  ['Claude cheers: "GO GO GO! Wait, which way is go?"', 0, 15], ['Claude tries to slap it. He slaps himself. It laughs.', 25, 0],
+  ['Claude offers it his last banana. He cries a little.', 30, 0], ['Claude does a battle cry. It comes out as a squeak.', 10, 10],
+  ['Claude tells it a joke. Nobody gets it. Not even Claude.', 20, 5], ['Claude hides behind you. Then gives you a thumbs up.', 0, 20]];
 function enemyTurn() {
+  if (BT.story && Math.random() < 0.45) { const [line, calm, tp] = CLAUDE_HELP[Math.floor(Math.random() * CLAUDE_HELP.length)];
+    BT.calm = Math.min(100, BT.calm + calm); BT.tp = Math.min(100, BT.tp + tp); drawBtTop(); drawBtTP();
+    btSay([line + (calm ? '  (+' + calm + ' calm)' : '') + (tp ? '  (+' + tp + '% TP)' : '')], enemyTurnGo); return; }
+  enemyTurnGo();
+}
+function enemyTurnGo() {
   const a = BT.def.attacks[BT.atk++ % BT.def.attacks.length];
   BT.phase = 'dodge'; BT.t = 0; BT.dur = a.dur; BT.ems = a.ems.map(e => ({ ...e, _next: e.start, _k: 0, _ang: 0, _alt: false }));
   BT.sx = 150; BT.sy = 200; btText.m.visible = false; btBar.visible = false; btSpark.visible = true; clearBtns();
@@ -3222,7 +3250,7 @@ function updateBattle(dt, t) {
     if (xr) { const h = hands.find(x => x.source?.handedness === 'right') || hands.find(x => x.source); if (h) { btRoot.worldToLocal(_btv.copy(h.last)); BT.sx = 150 + _btv.x / BU; BT.sy = 150 - _btv.y / BU; } }
     else { const sp = 150 * dt, K = BT.keys; BT.sx += ((K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + TOUCH.x) * sp; BT.sy += ((K.KeyS || K.ArrowDown ? 1 : 0) - (K.KeyW || K.ArrowUp ? 1 : 0) + TOUCH.y) * sp; }
     BT.sx = Math.max(7, Math.min(293, BT.sx)); BT.sy = Math.max(7, Math.min(293, BT.sy));
-    btLocal(BT.sx, BT.sy, btSpark.position); btSpark.position.z = 0.012; btSpark.rotation.y += dt * 4; btSpark.visible = BT.inv <= 0 || Math.floor(t * 16) % 2 === 0;
+    btLocal(BT.sx, BT.sy, btSpark.position); btSpark.position.z = 0.012; BT.gz = Math.max(0, (BT.gz || 0) - dt); btSpark.scale.setScalar(1 + BT.gz * 4); btSpark.material.color.set(BT.gz > 0 ? 0xffffff : 0x5ef2ff); btSpark.rotation.y += dt * 4; btSpark.visible = BT.inv <= 0 || Math.floor(t * 16) % 2 === 0;
     BT.t += dt;
     if (BT.t <= BT.dur) for (const e of BT.ems) { if (e.every <= 0.01) continue; let g = 0; while (BT.t >= e._next && e._next <= Math.min(e.end, BT.dur) && g++ < 50) { if (BT.t >= e.start) btFire(e); e._next += e.every; } }
     else if (BT.t > BT.dur + 0.8 && !BT.bullets.length && !BT.lasers.length || BT.t > BT.dur + 2.5) { BT.bullets = []; clearBtLasers(); btSpark.visible = false; setMenu(); }
@@ -3231,7 +3259,7 @@ function updateBattle(dt, t) {
       if (b.homing) { const want = Math.atan2(BT.sy - b.y, BT.sx - b.x), cur = Math.atan2(b.vy, b.vx); let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; const na = cur + Math.max(-b.homing * dt, Math.min(b.homing * dt, d)), s = Math.hypot(b.vx, b.vy); b.vx = Math.cos(na) * s; b.vy = Math.sin(na) * s; }
       b.x += b.vx * dt; b.y += b.vy * dt;
       if (b.bounces > 0) { if ((b.x < b.r && b.vx < 0) || (b.x > 300 - b.r && b.vx > 0)) { b.vx *= -1; b.bounces--; } if ((b.y < b.r && b.vy < 0 && b.life > 0.3) || (b.y > 300 - b.r && b.vy > 0)) { b.vy *= -1; b.bounces--; } }
-      if (Math.hypot(b.x - BT.sx, b.y - BT.sy) < b.r * 0.8 + 4) btHurt();
+      { const dd = Math.hypot(b.x - BT.sx, b.y - BT.sy); if (dd < b.r * 0.8 + 4) btHurt(); else if (dd < b.r + 20 && !b.grazed && BT.inv <= 0) { b.grazed = true; btGraze(); } }
     }
     BT.bullets = BT.bullets.filter(b => b.x > -40 && b.x < 340 && b.y > -60 && b.y < 340 && !(b.maxLife && b.life > b.maxLife));
     for (const l of BT.lasers) {
@@ -3394,7 +3422,7 @@ function compKey(k) {
     else if (k === 'H') { SET.cam.horizon = SET.cam.horizon ? 0 : 1; liv.dirty = true; CP.msg = 'HORIZON LOCK ' + (SET.cam.horizon ? 'ON' : 'OFF'); }
     else if (k === 'S') { SET.cam.show = SET.cam.show ? 0 : 1; liv.dirty = true; CP.msg = SET.cam.show ? 'OTHERS CAN SEE YOUR CAMERA' : 'YOUR CAMERA IS HIDDEN FROM OTHERS'; }
   }
-  else if (menu === 'VOLUME' && /[0-9]/.test(k)) { if (CP.vch === 0) SET.voiceVol = +k; else SET.sfxVol = +k; saveSettings(); applyVolumes(); CP.msg = 'SAVED'; }
+  else if (menu === 'VOLUME' && /[0-9]/.test(k)) { if (CP.vch === 0) SET.voiceVol = +k; else if (CP.vch === 1) SET.sfxVol = +k; else SET.musicVol = +k; saveSettings(); applyVolumes(); CP.msg = 'SAVED'; }
   else if (CP.input.length < 12) CP.input += k;
   drawComp();
 }
@@ -3411,7 +3439,7 @@ function compOpt(menu, o) {
   if (menu === 'COLOR') { CP.ch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'TURN') { SET.turn = ['snap30', 'snap45', 'smooth'][o - 1]; saveSettings(); CP.msg = 'SAVED'; }
   if (menu === 'MIC') { SET.mic = ['open', 'ptt', 'off'][o - 1]; saveSettings(); applyMic(); CP.msg = 'SAVED'; }
-  if (menu === 'VOLUME') { CP.vch = o === 2 ? 1 : 0; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
+  if (menu === 'VOLUME') { CP.vch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'DARK CAM') { if (o === 1) livCycle(); if (o === 2) camZoom(5); if (o === 3) camZoom(-5); CP.msg = CAM_LABEL[liv.mode] + ' • ' + Math.round(camFov(liv.mode === 'boss' ? 'shoulder' : liv.mode)) + '°'; }
 }
 // ---- the screen ----
@@ -3434,7 +3462,7 @@ function drawComp() {
   }
   if (menu === 'TURN') { line('HOW THE RIGHT STICK TURNS YOU', '#5ef2ff', 28); choice([['snap30', 'SNAP 30°'], ['snap45', 'SNAP 45°'], ['smooth', 'SMOOTH']], SET.turn); }
   if (menu === 'MIC') { line('VOICE CHAT', '#5ef2ff', 28); choice([['open', 'OPEN MIC (X = MUTE)'], ['ptt', 'PUSH TO TALK (HOLD X)'], ['off', 'MUTED']], SET.mic); }
-  if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS'].forEach((n, i) => { const v = i ? SET.sfxVol : SET.voiceVol, on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
+  if (menu === 'VOLUME') { ['VOICES', 'GAME SOUNDS', 'MUSIC'].forEach((n, i) => { const v = [SET.voiceVol, SET.sfxVol, SET.musicVol][i], on = CP.vch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k < v ? '#5ef2ff' : '#2a1640'; c.fillRect(x + 330 + k * 28, y - 16, 22, 32); } y += 64; }); line('PICK ONE, THEN PRESS 0-9', '#cbbcf0', 24); }
   if (menu === 'DARK CAM') {
     line('MODE: ' + CAM_LABEL[liv.mode], '#5ef2ff', 30);
     line('OPT 1: NEXT MODE    OPT 2: WIDER    OPT 3: CLOSER', '#ffffff', 24);
@@ -4180,7 +4208,132 @@ function updateIntro(dt, t) {
   } else if (INTRO.phase === 'out') { const k = Math.max(0, 1 - INTRO.t / 0.7); setIntroFade(k, k); if (k <= 0) { INTRO.active = false; setIntroFade(0, 0); } }
 }
 
-window.__boss = { pathStep, OPEN_EDGE, me, kb, kbKeys, hands, updateComp, BOSSES, renderer, INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+window.__boss = { btGraze, pathStep, OPEN_EDGE, me, kb, kbKeys, hands, updateComp, BOSSES, renderer, INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+
+// ================= MUSIC (all original songs, played live by a tiny chiptune band: lead, arp, bass, drums) =================
+// each token is an eighth note: a note like c5 / f#4 / bb3, "-" holds the last note, "." is a rest. "|" is just for reading.
+const SONGS = {
+  lobby: { name: 'Dusk Courtyard', bpm: 96, lead: { wave: 'square', vol: 0.035 }, bass: { wave: 'triangle', vol: 0.11 }, drum: 0.5,
+    L: 'e5 . a4 c5 e5 - d5 c5 | b4 - g4 - e4 - . . | d5 . f4 a4 d5 - c5 b4 | a4 - - - . . e4 g4 | e5 . a4 c5 e5 - g5 e5 | f5 - e5 d5 c5 - a4 - | g4 . b4 d5 g5 - f5 e5 | e5 - - - . . . .',
+    B: 'a2 . a3 . a2 . a3 . | e2 . e3 . e2 . e3 . | d2 . d3 . d2 . d3 . | a2 . a3 . a2 . e3 . | a2 . a3 . a2 . a3 . | f2 . f3 . f2 . f3 . | g2 . g3 . g2 . g3 . | e2 . e3 . e2 . g#2 .',
+    D: 'k . h . s . h . | k . h . s . h k' },
+  battle: { name: 'Pocket Scuffle', bpm: 150, lead: { wave: 'square', vol: 0.04 }, bass: { wave: 'triangle', vol: 0.12 }, drum: 0.9,
+    L: 'e5 e5 g5 e5 a5 g5 e5 d5 | e5 - b4 - d5 - e5 - | g5 g5 a5 g5 b5 a5 g5 e5 | f#5 - d5 - e5 - . . | e5 e5 g5 e5 a5 g5 e5 d5 | e5 - b4 - d5 - g5 - | a5 g5 f#5 e5 d5 e5 f#5 d5 | e5 - - - b5 - e5 .',
+    B: 'e2 e3 e2 e3 e2 e3 e2 e3 | c2 c3 c2 c3 d2 d3 d2 d3 | e2 e3 e2 e3 e2 e3 e2 e3 | b1 b2 b1 b2 b1 b2 d2 d3 | e2 e3 e2 e3 e2 e3 e2 e3 | c2 c3 c2 c3 d2 d3 d2 d3 | a1 a2 a1 a2 b1 b2 b1 b2 | e2 e3 e2 e3 b1 b2 e2 .',
+    D: 'k h s h k k s h' },
+  boss: { name: 'Arena Lights', bpm: 165, lead: { wave: 'sawtooth', vol: 0.03 }, bass: { wave: 'square', vol: 0.06 }, drum: 1,
+    L: 'd5 . d5 f5 a5 . g5 f5 | e5 . c5 . e5 f5 g5 . | d5 . d5 f5 a5 . c6 a5 | bb5 - a5 - g5 - e5 - | d6 . c6 a5 bb5 . a5 g5 | f5 . e5 . d5 e5 f5 . | g5 . f5 e5 c#5 . e5 . | d5 - - - a4 - d5 .',
+    B: 'd2 d3 d2 d3 d2 d3 c3 d3 | c2 c3 c2 c3 c2 c3 bb2 c3 | d2 d3 d2 d3 d2 d3 c3 d3 | bb1 bb2 bb1 bb2 a1 a2 a1 a2 | bb1 bb2 bb1 bb2 g1 g2 g1 g2 | f1 f2 f1 f2 c2 c3 c2 c3 | g1 g2 g1 g2 a1 a2 a1 a2 | d2 d3 d2 d3 a1 a2 d2 .',
+    D: 'k h s h k h s s' },
+  hollow: { name: "Claude's Walk", bpm: 116, lead: { wave: 'square', vol: 0.035 }, bass: { wave: 'triangle', vol: 0.11 }, drum: 0.6,
+    L: 'c5 . e5 . g5 . e5 c5 | d5 . f5 . a5 - g5 . | e5 . c5 . g4 . a4 b4 | c5 - - . . . . . | f5 . a5 . f5 . d5 . | e5 . g5 . e5 c5 . . | d5 . b4 . g4 a4 b4 d5 | c5 - . g4 c5 . . .',
+    B: 'c3 . g2 . c3 . g2 . | f2 . c3 . f2 . c3 . | c3 . g2 . a2 . b2 . | c3 . g2 . c3 . . . | f2 . c3 . f2 . c3 . | c3 . g2 . c3 . g2 . | g2 . d3 . g2 . b2 . | c3 . g2 . c3 . . .',
+    D: 'k . s h k k s .' },
+  camp: { name: 'Lantern Song', bpm: 84, lead: { wave: 'triangle', vol: 0.07 }, arp: { wave: 'triangle', vol: 0.035 }, bass: { wave: 'sine', vol: 0.14 },
+    A: 'g4 b4 d5 b4 g4 b4 d5 b4 | e4 g4 b4 g4 e4 g4 b4 g4 | c4 e4 g4 e4 c4 e4 g4 e4 | d4 f#4 a4 f#4 d4 f#4 a4 f#4',
+    L: 'd5 - - b4 g5 - - . | e5 - - d5 b4 - - . | c5 - e5 - g5 - e5 . | f#5 - - - - - . .',
+    B: 'g2 - - - - - - - | e2 - - - - - - - | c2 - - - - - - - | d2 - - - - - - -' },
+  spire: { name: 'Broken Spire', bpm: 100, lead: { wave: 'triangle', vol: 0.07 }, arp: { wave: 'square', vol: 0.018 }, bass: { wave: 'sine', vol: 0.15 },
+    A: 'b3 f#4 b4 d5 b4 f#4 b3 f#4 | g3 d4 g4 b4 g4 d4 g3 d4 | e3 b3 e4 g4 e4 b3 e3 b3 | f#3 c#4 f#4 a#4 f#4 c#4 f#3 c#4',
+    L: 'f#5 - - - e5 - d5 - | d5 - - - b4 - - - | e5 - g5 - f#5 - e5 - | c#5 - - - - - . .',
+    B: 'b1 - - - - - - - | g1 - - - - - - - | e1 - - - - - - - | f#1 - - - - - - -' },
+  light: { name: 'So Happy :)', bpm: 120, lead: { wave: 'sine', vol: 0.07, detune: 22 }, bass: { wave: 'sine', vol: 0.08, detune: -14 },
+    L: 'f5 a5 c6 a5 f5 a5 c6 a5 | g5 bb5 d6 bb5 g5 bb5 d6 bb5 | a5 c6 f6 c6 a5 c6 e6 c6 | f6 - c6 - a5 - . .',
+    B: 'f3 . . . c4 . . . | g3 . . . d4 . . . | a3 . . . c4 . . . | f3 . . . . . . .' },
+  dark: { name: 'Do Not Look Back', bpm: 60, lead: { wave: 'sine', vol: 0.03 }, bass: { wave: 'sine', vol: 0.16 },
+    L: 'e6 . . . . . . . | . . . . f6 . . . | . . . . . . . . | . . d#6 . . . . .',
+    B: 'a1 - - - - - - - | bb1 - - - - - - - | a1 - - - - - - - | g#1 - - - - - - -' },
+};
+const NOTE_I = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+function parseTrack(str) { // -> [{ f, len }] per eighth (null = nothing starts here)
+  const tk = (str || '').split(/\s+/).filter(x => x && x !== '|'), out = [];
+  for (let i = 0; i < tk.length; i++) {
+    const t = tk[i]; if (t === '-' || t === '.') { out.push(null); continue; }
+    const m = /^([a-g])(#|b)?(\d)$/.exec(t); if (!m) { out.push(null); continue; }
+    let len = 1; while (tk[i + len] === '-') len++;
+    out.push({ f: 440 * Math.pow(2, (NOTE_I[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (+m[3] + 1) * 12 - 69) / 12), len });
+  }
+  return out;
+}
+for (const s of Object.values(SONGS)) { s.l = parseTrack(s.L); s.b = parseTrack(s.B); s.a = parseTrack(s.A); s.d = (s.D || '').split(/\s+/).filter(x => x && x !== '|'); }
+const MUSIC = { song: null, want: 'lobby', step: 0, nextT: 0, out: null, fadeT: 0, shown: '' };
+function musicOut() {
+  if (!MUSIC.out) { const g = actx.createGain(), f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 3200; g.connect(f); f.connect(actx.destination); MUSIC.out = g; MUSIC.filt = f; }
+  return MUSIC.out;
+}
+function mNote(t, f, dur, inst) {
+  const o = actx.createOscillator(), g = actx.createGain(); o.type = inst.wave; o.frequency.value = f; if (inst.detune) o.detune.value = inst.detune;
+  const v = inst.vol, a = Math.min(0.02, dur * 0.2); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + a); g.gain.setTargetAtTime(v * 0.6, t + a, dur * 0.4); g.gain.setTargetAtTime(0, t + dur * 0.85, 0.04);
+  o.connect(g).connect(musicOut()); o.start(t); o.stop(t + dur + 0.25);
+}
+function mDrum(t, k, amt) {
+  if (k === 'k') { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12); g.gain.setValueAtTime(0.22 * amt, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16); o.connect(g).connect(musicOut()); o.start(t); o.stop(t + 0.2); return; }
+  const n = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(); n.buffer = getNoise();
+  f.type = k === 'h' ? 'highpass' : 'bandpass'; f.frequency.value = k === 'h' ? 7000 : 1800; const d = k === 'h' ? 0.04 : 0.12;
+  g.gain.setValueAtTime((k === 'h' ? 0.05 : 0.12) * amt, t); g.gain.exponentialRampToValueAtTime(0.001, t + d); n.connect(f).connect(g).connect(musicOut()); n.start(t, Math.random() * 0.3); n.stop(t + d + 0.02);
+}
+function musicArea() {
+  const h = myPose.h;
+  if (BT.active) return 'battle';
+  if (B.def && B.phase !== 'dead' && Math.abs(h.x - AX) < 25 && Math.abs(h.z - AZ) < 25) return 'boss';
+  if (INTRO.active) return 'light';
+  if (inDW(h)) return 'dark';
+  if (Math.hypot(h.x - B3X, h.z - B3Z) < 40) return 'camp';
+  if (Math.hypot(h.x - C2X, h.z - (C2Z - 16)) < 45) return 'spire';
+  if (Math.abs(h.x - SX) < 40 && h.z < SZ + 20 && h.z > SZ - 70) return 'hollow';
+  return 'lobby';
+}
+function updateMusic(dt) {
+  if (!actx || SPECTATE) return;
+  const out = musicOut(), vol = (SET.musicVol ?? 4) / 9 * 0.9;
+  const want = musicArea();
+  if (want !== MUSIC.want) { MUSIC.want = want; MUSIC.fadeT = 0.6; }
+  if (MUSIC.fadeT > 0) { MUSIC.fadeT -= dt; out.gain.setTargetAtTime(0, actx.currentTime, 0.12); if (MUSIC.fadeT <= 0) { MUSIC.song = null; } }
+  else out.gain.setTargetAtTime(vol, actx.currentTime, 0.3);
+  if (!MUSIC.song && MUSIC.fadeT <= 0) { MUSIC.song = SONGS[MUSIC.want]; MUSIC.step = 0; MUSIC.nextT = actx.currentTime + 0.1; }
+  const s = MUSIC.song; if (!s || vol <= 0) return;
+  const st = 60 / s.bpm / 2; // one eighth note
+  if (MUSIC.nextT < actx.currentTime - 0.5) MUSIC.nextT = actx.currentTime + 0.05; // tab was asleep: don't play a pile of old notes
+  while (MUSIC.nextT < actx.currentTime + 0.15) {
+    const i = MUSIC.step, t = MUSIC.nextT;
+    for (const [tr, inst] of [[s.l, s.lead], [s.b, s.bass], [s.a, s.arp]]) { if (!inst || !tr.length) continue; const n = tr[i % tr.length]; if (n) mNote(t, n.f, n.len * st * 0.95, inst); }
+    if (s.d.length && s.drum) { const k = s.d[i % s.d.length]; if (k !== '.') mDrum(t, k, s.drum); }
+    MUSIC.step++; MUSIC.nextT += st;
+  }
+}
+// ================= SAVE STARS (glowing stars around the world: touch one to heal up and save) =================
+const SAVE_STARS = [
+  { p: [3.2, 1.2, 3.2], lines: ['The fountain hums softly. Your fur feels extra fluffy.', 'The Rift glows behind you. You feel like you could climb anything.'] },
+  { p: [SX + 3.5, 1.4, SZ + 2.5], lines: ['The Hollow is quiet. Claude is humming off-key somewhere.', 'A warm little star. It smells like bananas, somehow.'] },
+  { p: [C2X + 3.2, 1.4, C2Z + 2.5], lines: ['The broken spire creaks. You are not scared. Mostly.', 'Glittering dust floats by. You feel brave.'] },
+  { p: [B3X + 4.2, 1.4, B3Z + 2.2], lines: ['The campfire crackles. Everyone here feels like family.', 'Dory waves at you from far away. You feel ready.'] },
+  { p: [AX - 7, 1.4, AZ + 6], lines: ['The arena lights flicker. Something huge is watching. Probably fine.', 'You crack your knuckles. All eight of them? Four. Whatever.'] },
+];
+{
+  const sh = new THREE.Shape(); for (let i = 0; i < 8; i++) { const r = i % 2 ? 0.06 : 0.17, a = i / 8 * Math.PI * 2 + Math.PI / 2; i ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 }); geo.center();
+  for (const s of SAVE_STARS) {
+    const g = new THREE.Group(); g.position.set(...s.p); scene.add(g);
+    g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffe066 })));
+    const glow = new THREE.Mesh(S(0.32, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd447, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })); g.add(glow);
+    s.g = g; s.glow = glow; s.cd = 0;
+  }
+}
+if (window.__boss) Object.assign(window.__boss, { MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+function updateSaveStars(dt, t) {
+  for (const s of SAVE_STARS) {
+    s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
+    s.glow.scale.setScalar(1 + Math.sin(t * 3) * 0.12 + (s.cd > 2.5 ? (s.cd - 2.5) * 1.5 : 0));
+    const near = storyTouch(s.g.position, 0.7) || (keys.KeyE && myPose.h.distanceTo(s.g.position) < 1.6);
+    if (near && s.cd <= 0) {
+      s.cd = 4; if (typeof P !== 'undefined') P.hp = P.max;
+      try { saveSettings(); } catch (e) { }
+      toast(s.lines[Math.floor(Math.random() * s.lines.length)] + '  (HEALED + SAVED)', 3.2);
+      [523, 659, 784, 1047].forEach((f, i) => sfx(f, f, 0.25, 'triangle', 0.08, i * 0.07));
+      for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.4, 80);
+    }
+  }
+}
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -4270,7 +4423,7 @@ renderer.setAnimationLoop(() => {
   for (let i = 0; i < PN; i++) { let y = pPos[i * 3 + 1] + dt * (1.5 + (i % 7) * 0.3); if (y > 30) y -= 30; pPos[i * 3 + 1] = y; }
   pGeo.attributes.position.needsUpdate = true;
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.position.y += Math.sin(t * 0.4 + m.userData.bob) * 0.15 * dt; }
-  updateWorldLife(dt, t);
+  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t);
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
   if (SPECTATE) renderSpectator(t);
