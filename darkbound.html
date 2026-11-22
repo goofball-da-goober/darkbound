@@ -40,6 +40,8 @@
   • Voice chat turns on when you enter VR &nbsp;•&nbsp; X: mute<br>
   • Dark Cam: click a thumbstick to hold it in that hand (or grab it with grip), trigger = photo, A = next camera mode<br>
   • <b>Dark Cam viewer:</b> open this game on a PC with <b>?cam</b> on the end of the link (same room) to watch and record your Dark Cam live<br>
+  • <b>Battles (new!):</b> touch a roaming monster. Touch / 1-4: pick, swing / Space: slap, hand / WASD: dodge<br>
+  • <b>Hat Stand:</b> by spawn, buy hats with bananas<br>
   • <b>Story mode:</b> jump into the Rift (the light fountain at spawn) to meet Claude. Chapters 1, 2 and 2.5<br>
   • <b>Bosses:</b> the arena is south-east. Touch a statue to summon, dodge, then slap the boss when it's dizzy
   <hr>
@@ -54,7 +56,7 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ================= TUNING (Gorilla-style locomotion) =================
-const VERSION = 'ALPHA 0.1', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
+const VERSION = 'ALPHA 0.2', EYE_VERSION = 2.5; // the Eye (the O in DARKBOUND) is the last boss: it wakes up in version 2.5
 const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
@@ -276,6 +278,10 @@ addBox(B3X, 0, B3Z, 24, 0.5, 24, COL.stoneHi, EDGE.gold);                       
 for (const [x, z, sx, sz] of [[0, -12, 24, 0.4], [-12, 0, 0.4, 24], [12, 0, 0.4, 24], [-7.5, 12, 9, 0.4], [7.5, 12, 9, 0.4]])
   addBox(B3X + x, 0.5, B3Z + z, sx, 0.8, sz, COL.trunk, EDGE.pink);                           // low log fence, gate to the south
 for (const [x, z] of [[-6, -6], [6, -7], [-7, 5]]) addBox(B3X + x, 0.5, B3Z + z, 0.5, 0.5, 0.5, COL.trunk, EDGE.pink); // stumps to sit on
+
+// --- ALPHA 0.2: Hat Stand (south-west of spawn) ---
+const HAT_PEDS = [-7.6, -6.2, -4.8, -3.4].map(x => new THREE.Vector3(x, 0.9, 10.6));
+HAT_PEDS.forEach(p => addBox(p.x, 0, p.z, 0.7, 0.9, 0.7, COL.gold, EDGE.gold));
 
 buildMeshes();
 
@@ -644,17 +650,19 @@ function makeGorilla(color) {
   const ARM1 = 0.26, ARM2 = 0.28; // upper arm / forearm: long gorilla arms
   const neck = limb(root, 0.12, 0.1, fur); // thick furry neck: head and body always look joined
   const _nk0 = new THREE.Vector3(), _nk1 = new THREE.Vector3();
-  let selfHidden = false;
+  let selfHidden = false, hatObj = null;
 
   return {
     root, head, body,
     // first person: hide your own body + shoulders (they'd block your view); arms and hands stay
     setSelfView(fp) { selfHidden = fp; body.visible = !fp; neck.visible = !fp; for (const A of arms) A.shoulder.visible = !fp; },
     get selfHidden() { return selfHidden; },
+    setHat(id) { if (hatObj) skull.remove(hatObj); hatObj = id ? makeHat(id) : null; if (hatObj) skull.add(hatObj); },
     setMouth(v) { mouth.scale.set(1.4, 0.25 + v * 1.8, 0.5 + v * 0.6); },
     setTouch(l, r) { arms[0].palm.emissiveIntensity = l ? 0.55 : 0; arms[1].palm.emissiveIntensity = r ? 0.55 : 0; },
     update(p, dt = 1 / 60) {
       head.position.copy(p.h); head.quaternion.copy(p.q);
+      if (hatObj?.userData.spin) hatObj.userData.spin.rotation.y += dt * 12;
       _e.setFromQuaternion(p.q, 'YXZ'); const yaw = _e.y;
       // --- body gravity ---
       _neck.copy(p.h); _neck.y -= 0.17;
@@ -702,6 +710,7 @@ function applyState(d) {
   t.h.fromArray(d.h); t.q.fromArray(d.q); t.l.fromArray(d.l); t.r.fromArray(d.r);
   if (d.lq) t.lq.fromArray(d.lq); if (d.rq) t.rq.fromArray(d.rq);
   if (d.kf) r.kf = d.kf; r.color = d.c;
+  if (typeof d.ht === 'string' && d.ht !== r.hat) { r.hat = d.ht; r.g.setHat(d.ht || null); }
   if (d.kp && d.kq) { (r.kp ||= new THREE.Vector3()).fromArray(d.kp); (r.kq ||= new THREE.Quaternion()).fromArray(d.kq); }
   if (d.p && r.pid !== d.p) { if (r.pid) dropVoice(r.pid); r.pid = d.p; callPeer(d.p); }
   r.seen = performance.now();
@@ -943,7 +952,7 @@ const r3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 const q4 = q => [q.x, q.y, q.z, q.w].map(n => +n.toFixed(4));
 function myState() {
   const p = myPose;
-  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1) };
+  return { t: 's', id: myId, p: net.peer?.id || null, c: MY_COLOR, h: r3(p.h), q: q4(p.q), l: r3(p.l), lq: q4(p.lq), r: r3(p.r), rq: q4(p.rq), kp: r3(livObj.position), kq: q4(livObj.quaternion), kf: +livCam.fov.toFixed(1), ht: hatSave.on || '' };
 }
 function broadcast(msg, except) { for (const c of net.conns.values()) if (c !== except && c.open) c.send(msg); }
 function onData(d, from) {
@@ -1384,7 +1393,7 @@ function damageBoss(n, local) {
 function endBoss(win) {
   if (!B.def) return;
   if (!win) { banner('THE BOSS LEFT', '', 2); clearBoss(); return; }
-  defeated.add(B.def.id); saveDefeated();
+  defeated.add(B.def.id); saveDefeated(); addBananas(15, 'BOSS DEFEATED');
   B.phase = 'dead'; B.pt = 0; B.bullets = []; clearLasers();
   banner('VICTORY!', B.def.name + ' IS DEFEATED', 4, '#6dff9a');
   [523, 659, 784, 1047].forEach((f, i) => sfx(f, f, 0.35, 'triangle', 0.18, i * 0.12));
@@ -1895,7 +1904,7 @@ function updateStory(dt, t) {
  while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   CL.yaw += d * (1 - Math.exp(-4 * dt)); claude.root.rotation.y = CL.yaw;
   claude.body.rotation.z = Math.sin(t * 0.8) * 0.2 + Math.sin(t * 2.3) * 0.05; // big puzzled head tilts
-  const talking = !!STORY.cur && STORY.shown < STORY.cur.length;
+  const talking = !!STORY.cur && STORY.shown < STORY.cur.length && !STORY.spk; // only when it's Claude talking
   claude.hands[0].position.y = claude.hands[0].userData.y0 + 0.6 * (talking ? Math.abs(Math.sin(t * 8)) * 0.15 : Math.sin(t * 2) * 0.03);
   claude.hands[1].position.y = claude.hands[1].userData.y0 + 0.6 * (talking ? Math.abs(Math.cos(t * 7)) * 0.1 : Math.cos(t * 2) * 0.03);
   claude.smile.scale.y = talking ? 1 + Math.abs(Math.sin(t * 18)) * 1.2 : 1;
@@ -1937,7 +1946,7 @@ function updateStory(dt, t) {
   if (STORY.state === 'bridge' && STORY.bridge && h.z < SZ - 46 && h.y > PLAT_Y - 0.5) {
     STORY.state = 'door'; STORY.check.set(SX, PLAT_Y + 0.1, SZ - 47);
     say(['This is the Eye\'s door. Is it a door? It has an eye on it. Doors don\'t usually have eyes.', 'Somebody said the Eye is the O in DARKBOUND. Which O? There\'s only one O. Oh. That one.', 'It\'s sealed shut until version 2.5. I knocked once. It blinked at me. I ran away.', 'Go beat the Warden, the Witch and the... Collie-sus? In the Boss Arena. You\'ll get strong!', 'Oh, a gold CHAPTER 2 portal just opened where you landed! I didn\'t touch anything. I promise.', 'This portal goes home. Bye, gorilla! Or hello? I always mix those up.'], () => {
-      makePortal(); STORY.state = 'done'; STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
+      makePortal(); STORY.state = 'done'; if (!STORY.done) addBananas(10, 'CHAPTER 1'); STORY.done = true; try { localStorage.setItem('darkbound-story-1', 'done'); } catch (e) { }
       banner('CHAPTER COMPLETE', 'TO BE CONTINUED IN v' + EYE_VERSION, 3.5, '#6dff9a');
     });
     eyeStare(4, 0.5);
@@ -2103,7 +2112,7 @@ function updateC2(dt, t) {
     [523, 659, 784, 1047, 1319].forEach((f, i) => sfx(f, f, 0.3, 'triangle', 0.16, i * 0.1));
     c2Say(['Ooooh, shiny! The lantern is on again! I knew it would work. I did not know it would work.', 'Every lantern we light makes the Eye weaker. Somebody told me that. Maybe the rock again.', 'I think the Eye saw us. Is it mad? It looks mad. Eyes always look mad.', 'Hey, a pink portal opened! Chapter 2.5, the Lantern Camp. My friends are there! I have friends!', 'The blue one goes home. Great job, gorilla! Or monkey? Are you a monkey? I\'m a monkey.'], () => {
       C2.home = storyPortal(C2X + 1.8, C2TOP + 1.3, C2Z - 31.8, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
-      C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { } showCampEntries();
+      if (!C2.done) addBananas(10, 'CHAPTER 2'); C2.done = true; try { localStorage.setItem('darkbound-story-2', 'done'); } catch (e) { } showCampEntries();
       banner('CHAPTER 2 COMPLETE', 'TO BE CONTINUED', 3.5, '#6dff9a');
     });
   }
@@ -2174,7 +2183,7 @@ function makeNova() { // tinkerer robot
 }
 function makeDory() { // Dory: a lavender monkey who keeps the flower lanterns
   const o = npcRoot(-13, 4, -13);
-  const m = makeMonkey(o.body, { fur: 0xc9a7ff, face: 0xf6e9ff, dark: 0x4a2a6a, k: 1.05 }); o.eyes = m.eyes;
+  const m = makeMonkey(o.body, { fur: 0xc9a7ff, face: 0xf6e9ff, dark: 0x4a2a6a, k: 1.05 }); o.eyes = m.eyes; o.smile = m.smile;
   for (const s of [-1, 1]) for (let i = 0; i < 3; i++) { // eyelashes
     const l = part(o.body, new THREE.BoxGeometry(0.008, 0.035, 0.008), B_PUPIL, [s * (0.1 + i * 0.016), 0.115 - i * 0.008, 0.215], null, 0); l.rotation.z = -s * (0.35 + i * 0.35);
   }
@@ -2227,7 +2236,7 @@ function doryArrives() {
     B3.state = 'secret'; CL.lookAt = null; CL.goal.copy(myPose.h).add(new THREE.Vector3(0.9, 0.3, 0.6));
     say(['Psst. Gorilla. Come here. Closer. Not THAT close.', 'When Dory is near, my face gets hot and my tummy does a flip. Am I sick?', 'Nova says it\'s a "crush". What\'s a crush? Is it bad? Is it a fruit?', 'Whatever it is, DON\'T tell her! I don\'t even know what it is yet!', 'I\'ll figure it out some day. Maybe. Not in this chapter though.'], () => {
       banner('SECRET: CLAUDE ♥ DORY', 'YOU PROMISED NOT TO TELL', 3.5, '#ff5c8a');
-      B3.state = 'free'; B3.done = true; try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
+      B3.state = 'free'; if (!B3.done) addBananas(10, 'CHAPTER 2.5'); B3.done = true; try { localStorage.setItem('darkbound-story-25', 'done'); } catch (e) { }
       B3.tell = storyPortal(B3X - 2.2, 1.0, B3Z - 3.1, 'TELL DORY?', 'LOCKED: YOU PROMISED', 0xff5c8a); B3.tell.scale.setScalar(0.45);
       B3.home = storyPortal(B3X + 3, 1.4, B3Z + 9, 'HOME', 'TOUCH TO GO BACK', 0x5ef2ff);
       CL.goal.set(B3X + 1.2, 1.9, B3Z - 2.5);
@@ -2257,6 +2266,7 @@ function updateCamp(dt, t) {
     walkMonkey(d, d.spot, d.stand, 1.8, dt, 40); d.legs.forEach((l, i) => { l.rotation.x = Math.sin(t * 9 + i * Math.PI) * 0.7 * d.walk; });
     d.root.rotation.y = d.walk > 0.5 ? Math.atan2(d.spot.x - d.pos.x, d.spot.z - d.pos.z) : Math.atan2(h.x - d.root.position.x, h.z - d.root.position.z);
     d.body.rotation.z = Math.sin(t * 1.4) * 0.08;
+    d.smile.scale.y = STORY.spk === d.root && STORY.shown < STORY.cur.length ? 1 + Math.abs(Math.sin(t * 18)) * 1.2 : 1; // Dory's mouth moves on her lines
     // Claude gets flustered near Dory
     const near = claude.root.position.distanceTo(d.root.position) < 4.5 && B3.state !== 'secret';
     B3.blush += ((near ? 1 : 0) - B3.blush) * (1 - Math.exp(-2 * dt));
@@ -2276,7 +2286,384 @@ function updateCamp(dt, t) {
   if (rig.position.y < -8) teleport(B3X, 0.6, B3Z + 9);
 }
 
-window.__boss = { startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
+// ================= ALPHA 0.2 =================
+// ---------- bananas (the new money) ----------
+let bananas = 0; try { bananas = +localStorage.getItem('darkbound-bananas') || 0; } catch (e) { }
+const bananaEl = document.createElement('div'); bananaEl.id = 'bananas';
+bananaEl.style.cssText = 'position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:14px;z-index:5;font:bold 18px ui-monospace,Consolas,monospace;color:#ffd447;background:rgba(10,5,25,.8);border:2px solid #ffd447;border-radius:8px;padding:4px 10px;pointer-events:none';
+document.body.appendChild(bananaEl);
+function addBananas(n, why) {
+  bananas += n; try { localStorage.setItem('darkbound-bananas', String(bananas)); } catch (e) { }
+  bananaEl.textContent = '🍌 ' + bananas; if (n > 0) { banner('+' + n + ' BANANAS', why || '', 2, '#ffd447'); [880, 1175].forEach((f, i) => sfx(f, f, 0.15, 'triangle', 0.12, i * 0.08)); }
+}
+addBananas(0);
+
+// ---------- hats (sold at the Hat Stand, other players see them) ----------
+const HATS = [
+  { id: 'party', name: 'PARTY HAT', cost: 5 },
+  { id: 'prop', name: 'PROPELLER', cost: 10 },
+  { id: 'bulb', name: 'LANTERN BULB', cost: 15 },
+  { id: 'crown', name: 'CROWN', cost: 25 },
+];
+function makeHat(id) { // sized for the gorilla skull (top of the head is about y 0.15)
+  const g = new THREE.Group(); g.position.y = 0.14;
+  if (id === 'party') {
+    const c = part(g, new THREE.ConeGeometry(0.06, 0.15, 16), toon(0xff5c8a, 0.3), [0, 0.07, 0], null, 0.006); c.rotation.z = 0.15;
+    part(g, new THREE.TorusGeometry(0.045, 0.008, 6, 16), toon(0xffd447, 0.3), [0, 0.035, 0], null, 0).rotation.x = Math.PI / 2;
+    part(g, S(0.022, 10, 8), toon(0x5ef2ff, 0.4), [0.02, 0.15, 0], null, 0.004);
+  } else if (id === 'prop') {
+    part(g, S(0.11, 16, 10), toon(0x3a7bff, 0.25), [0, -0.02, 0], [1, 0.45, 1], 0.006);
+    part(g, new THREE.CylinderGeometry(0.006, 0.006, 0.05, 6), toon(0xffd447), [0, 0.04, 0], null, 0);
+    const p = new THREE.Group(); p.position.y = 0.065; g.add(p); g.userData.spin = p;
+    part(p, new THREE.BoxGeometry(0.2, 0.006, 0.03), toon(0xff5c8a, 0.3), null, null, 0.003);
+    part(p, new THREE.BoxGeometry(0.03, 0.006, 0.2), toon(0x6dff8a, 0.3), null, null, 0.003);
+  } else if (id === 'bulb') {
+    part(g, new THREE.CylinderGeometry(0.008, 0.012, 0.12, 8), toon(0x9c4a2a, 0.1), [0, 0.05, 0], null, 0.004);
+    part(g, S(0.035, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffe08a }), [0, 0.12, 0], null, 0);
+    const halo = new THREE.Mesh(S(0.07, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.y = 0.12; g.add(halo);
+  } else if (id === 'crown') {
+    const gold = toon(0xffc83d, 0.35);
+    part(g, new THREE.CylinderGeometry(0.075, 0.08, 0.05, 20, 1, true), gold, [0, 0.01, 0], null, 0.004).material.side = THREE.DoubleSide;
+    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; part(g, new THREE.ConeGeometry(0.017, 0.05, 6), gold, [Math.cos(a) * 0.072, 0.055, Math.sin(a) * 0.072], null, 0.003); part(g, S(0.01, 6, 4), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff5c8a : 0x5ef2ff }), [Math.cos(a) * 0.078, 0.015, Math.sin(a) * 0.078], null, 0); }
+  }
+  return g;
+}
+const hatSave = (() => { try { return JSON.parse(localStorage.getItem('darkbound-hats') || '{}'); } catch (e) { return {}; } })();
+hatSave.owned ||= []; hatSave.on ||= null;
+const saveHats = () => { try { localStorage.setItem('darkbound-hats', JSON.stringify(hatSave)); } catch (e) { } };
+me.setHat(hatSave.on);
+const hatStand = HATS.map((hat, i) => {
+  const p = HAT_PEDS[i], show = makeHat(hat.id); show.scale.setScalar(3.2); show.position.set(p.x, p.y + 0.1, p.z); scene.add(show);
+  const lab = labelTex(); const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true }));
+  sign.position.set(p.x, p.y + 1.15, p.z); sign.rotation.y = Math.PI; scene.add(sign);
+  return { hat, show, lab, cd: 0, state: '' };
+});
+{ const lab = labelTex(null, 1024, 256); lab.draw(['HAT STAND', 'TOUCH A HAT • BUY WITH BANANAS', '#ffd447']); const c = lab.cv.getContext('2d'); c.fillStyle = 'rgba(10,5,25,1)'; c.fillRect(12, 12, 1000, 150); c.font = 'bold 84px monospace'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText('HAT STAND', 512, 125); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(-5.5, 2.75, 10.9); m.rotation.y = Math.PI; scene.add(m); }
+function drawHatStand() {
+  for (const s of hatStand) {
+    const st = hatSave.on === s.hat.id ? 'on' : hatSave.owned.includes(s.hat.id) ? 'own' : bananas >= s.hat.cost ? 'buy' : 'poor';
+    if (st === s.state) continue; s.state = st;
+    s.lab.draw([s.hat.name, { on: 'WEARING • TOUCH TO TAKE OFF', own: 'TOUCH TO WEAR', buy: '🍌 ' + s.hat.cost + ' • TOUCH TO BUY', poor: '🍌 ' + s.hat.cost + ' • NEED MORE' }[st], st === 'poor' ? '#ff5c8a' : st === 'on' ? '#6dff9a' : '#ffd447']);
+  }
+}
+function useHat(s) {
+  if (s.cd > 0) return; s.cd = 1.5;
+  const h = s.hat;
+  if (hatSave.on === h.id) { hatSave.on = null; banner('HAT OFF', '', 1.2); }
+  else if (hatSave.owned.includes(h.id)) { hatSave.on = h.id; banner('WEARING: ' + h.name, '', 1.5, '#6dff9a'); }
+  else if (bananas >= h.cost) { addBananas(-h.cost); hatSave.owned.push(h.id); hatSave.on = h.id; banner('BOUGHT: ' + h.name, 'LOOKING GOOD', 2, '#6dff9a'); sfx(523, 1047, 0.3, 'triangle', 0.15); }
+  else { banner('NOT ENOUGH BANANAS', 'NEED ' + h.cost + ' • YOU HAVE ' + bananas, 1.8, '#ff5c8a'); return; }
+  saveHats(); me.setHat(hatSave.on); s.state = ''; for (const x of hatStand) x.state = '';
+}
+function updateHats(dt, t) {
+  drawHatStand();
+  for (const s of hatStand) {
+    s.cd -= dt; s.show.rotation.y += dt * 0.8; s.show.position.y = HAT_PEDS[hatStand.indexOf(s)].y + 0.15 + Math.sin(t * 2 + s.show.id) * 0.04;
+    if (s.show.userData.spin) s.show.userData.spin.rotation.y += dt * 10;
+    if (renderer.xr.isPresenting) for (const h of hands) if (h.source && h.last.distanceTo(s.show.position) < 0.35) useHat(s);
+  }
+}
+addEventListener('keydown', e => { if (e.code !== 'KeyE' || BT.active) return; let best = null, bd = 1.4; for (const s of hatStand) { const d = Math.hypot(myPose.h.x - s.show.position.x, myPose.h.z - s.show.position.z); if (d < bd) { bd = d; best = s; } } if (best) useHat(best); });
+
+// ---------- What's New board ----------
+{
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 1024; const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(10,5,25,0.92)'; c.fillRect(0, 0, 1024, 1024); c.strokeStyle = '#6dff9a'; c.lineWidth = 10; c.strokeRect(5, 5, 1014, 1014);
+  c.fillStyle = '#6dff9a'; c.font = 'bold 76px monospace'; c.textAlign = 'center'; c.fillText("WHAT'S NEW", 512, 105);
+  c.fillStyle = '#ffd447'; c.font = 'bold 44px monospace'; c.fillText('ALPHA 0.2', 512, 165);
+  c.textAlign = 'left'; c.font = 'bold 36px monospace';
+  ['⚔ DARK BATTLES: touch a roaming', '  monster to fight it, turn by turn', '  SLAP • TALK • SNACK • CHILL', '  then dodge in the battle box!', '', '🦀 NEW: Bolt Crab', '🍌 BANANAS: win battles, bosses', '  and story chapters', '🎩 HAT STAND: buy hats, everyone', '  sees them', '📖 STORY: chapters 1, 2 and 2.5', '  (jump in the Rift!)']
+    .forEach((l, i) => { c.fillStyle = l.startsWith(' ') ? '#cbbcf0' : '#ffffff'; c.fillText(l, 60, 250 + i * 62); });
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(5.6, 1.6, 10.8); m.rotation.y = Math.PI; scene.add(m);
+}
+
+// ---------- Bolt Crab (new mini-boss model) ----------
+function makeBoltCrab() {
+  const root = new THREE.Group(), shell = toon(0xd0662f, 0.22), iron = toon(0x4a3c52, 0.12);
+  part(root, S(1, 22, 12), shell, null, [1.3, 0.55, 1], 0.05);
+  for (let i = 0; i < 5; i++) part(root, S(0.06, 8, 6), iron, [-0.8 + i * 0.4, 0.5, 0.35], null, 0.02);
+  const legs = [], claws = [];
+  for (const s of [-1, 1]) {
+    part(root, new THREE.CylinderGeometry(0.04, 0.05, 0.6, 8), iron, [s * 0.35, 0.75, 0.45], null, 0.02);
+    const e = part(root, S(0.16, 12, 10), B_WHITE, [s * 0.35, 1.1, 0.45], null, 0.04); const p = new THREE.Mesh(S(0.08, 10, 8), B_PUPIL); p.position.z = 0.12; e.add(p);
+    for (let i = 0; i < 3; i++) { const leg = part(root, new THREE.CylinderGeometry(0.05, 0.03, 0.9, 8), iron, [s * 1.25, -0.45, -0.4 + i * 0.4], null, 0.02); leg.rotation.z = s * 0.7; legs.push(leg); }
+    const claw = new THREE.Group(); claw.position.set(s * 1.25, 0.1, 0.9); root.add(claw); claws.push(claw);
+    part(claw, S(0.32, 14, 10), shell, null, [1, 0.8, 1.2], 0.04);
+    part(claw, new THREE.ConeGeometry(0.14, 0.55, 10), shell, [0, 0.12, 0.4], null, 0.03).rotation.x = Math.PI / 2;
+  }
+  root.scale.setScalar(0.3); scene.add(root);
+  return { root, legs, claws };
+}
+
+// ---------- Dark Battles: turn-based fights with a dodge box ----------
+const ENEMIES = {
+  gloom: { name: 'GLOOMLET', color: '#9b5cff', hp: 40, dmg: 3, scale: 0.15, make: () => makeGloomlet(),
+    attacks: [
+      { dur: 6, ems: [bEm('rain', { start: 0, end: 6, every: 0.35, count: 2, speed: 105, drift: 20, color: '#9b5cff', shape: 'orb' })] },
+      { dur: 6, ems: [bEm('ring', { origin: 'top', start: 0.3, end: 6, every: 1.1, count: 9, spin: 14, speed: 95, color: '#c99bff', shape: 'orb' })] },
+      { dur: 6, ems: [bEm('bouncer', { origin: 'top', start: 0, end: 5, every: 1.4, count: 2, bounces: 3, speed: 120, color: '#9b5cff', size: 7 })] }],
+    talks: [
+      { l: 'BOOP IT', t: 'You boop the Gloomlet. It giggles. Bloop!', c: 40 },
+      { l: 'COMPLIMENT', t: 'You say its eye is pretty. It turns even more purple.', c: 35 },
+      { l: 'MAKE FACES', t: 'You make a gorilla face. It makes one back. It only has one eye. Still cute.', c: 30 }],
+    flavor: ['The Gloomlet jiggles.', 'It smells like grape jelly.', 'The Gloomlet is trying to look scary. It is not.'] },
+  bat: { name: 'SPARK BAT', color: '#5ef2ff', hp: 55, dmg: 4, scale: 0.2, make: () => { const b = makeSparkBat(); b.root.visible = true; return b; },
+    attacks: [
+      { dur: 6, ems: [bEm('aimed', { origin: 'top-left', start: 0.3, end: 6, every: 1.1, count: 3, spread: 30, speed: 150, color: '#5ef2ff', shape: 'shard' }), bEm('aimed', { origin: 'top-right', start: 0.85, end: 6, every: 1.1, count: 3, spread: 30, speed: 150, color: '#ffd447', shape: 'shard' })] },
+      { dur: 6, ems: [bEm('homing', { origin: 'boss', start: 0.2, end: 5.5, every: 1.0, count: 2, turn: 100, speed: 75, color: '#e6b3ff', shape: 'star', size: 7 })] },
+      { dur: 6, ems: [bEm('spiral', { origin: 'center', start: 0.5, end: 6, every: 0.12, arms: 2, spin: 15, speed: 90, color: '#5ef2ff', size: 5 })] }],
+    talks: [
+      { l: 'HANG UPSIDE DOWN', t: 'You hang upside down with it. You both get dizzy. Friends!', c: 35 },
+      { l: 'SHHH!', t: 'You go shhh. The bat loves quiet. It stops squeaking.', c: 30 },
+      { l: 'OFFER A BUG', t: 'You offer a bug. It is a SPARK bat. It eats sparks. Awkward.', c: 15 }],
+    flavor: ['The Spark Bat flaps. Bzzt.', 'Tiny sparks fall off its wings.', 'It looks at you upside down. Even though it is right side up.'] },
+  crab: { name: 'BOLT CRAB', color: '#ff8a3d', hp: 70, dmg: 4, scale: 0.13, make: () => makeBoltCrab(),
+    attacks: [
+      { dur: 7, ems: [bEm('wall', { side: 'alternate', start: 0.3, end: 7, every: 1.5, gap: 70, speed: 95, size: 7, color: '#ff8a3d', shape: 'diamond' })] },
+      { dur: 7, ems: [bEm('laser', { orient: 'horizontal', aim: 'player', start: 0.4, end: 7, every: 1.4, warn: 0.8, width: 22, color: '#ff8a3d' })] },
+      { dur: 6, ems: [bEm('bouncer', { origin: 'top', start: 0, end: 5, every: 1.2, count: 3, bounces: 2, speed: 130, color: '#ffd447', size: 8 })] }],
+    talks: [
+      { l: 'WALK SIDEWAYS', t: 'You walk sideways too. The crab is impressed. Click click!', c: 35 },
+      { l: 'OIL ITS CLAWS', t: 'You oil its squeaky claws. It does a happy pinch dance.', c: 40 },
+      { l: 'ARM WRESTLE', t: 'You arm wrestle. It has claws. You lose. It is very happy.', c: 25 }],
+    flavor: ['The Bolt Crab clicks its claws.', 'Something squeaks. It was the crab.', 'The Bolt Crab scuttles left. Then right. Then left.'] },
+};
+const BOXM = 0.5, BU = BOXM / 300; // battle box: 0.5 m wide = 300 Forge units
+const btRoot = new THREE.Group(); btRoot.visible = false; scene.add(btRoot);
+const btDim = new THREE.Mesh(S(3.2, 24, 16), new THREE.MeshBasicMaterial({ color: 0x07030f, transparent: true, opacity: 0.85, side: THREE.BackSide, depthWrite: false, fog: false }));
+btDim.visible = false; btDim.renderOrder = -5; scene.add(btDim); // drawn first, so the battle shows on top
+// box: dark backing + white frame
+const btBox = new THREE.Group(); btRoot.add(btBox);
+btBox.add(new THREE.Mesh(new THREE.PlaneGeometry(BOXM, BOXM), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.92 })));
+const btFrameM = new THREE.MeshBasicMaterial({ color: 0xffffff });
+for (const [x, y, w, h] of [[0, BOXM / 2, BOXM + 0.02, 0.01], [0, -BOXM / 2, BOXM + 0.02, 0.01], [BOXM / 2, 0, 0.01, BOXM], [-BOXM / 2, 0, 0.01, BOXM]]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), btFrameM); m.position.set(x, y, 0.002); btBox.add(m); }
+const btLocal = (u, v, out) => out.set((u - 150) * BU, (150 - v) * BU, 0.006);
+// canvas panels
+function btPanel(w, h, cw, ch, x, y) { const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); m.position.set(x, y, 0.004); btRoot.add(m); return { cv, tex, m }; }
+const btText = btPanel(BOXM - 0.02, BOXM - 0.02, 512, 512, 0, 0);   // words inside the box between turns
+const btTop = btPanel(0.56, 0.06, 1024, 110, 0, 0.3);               // enemy name, HP, calm
+const btBottom = btPanel(0.56, 0.045, 1024, 82, 0, -0.415);          // your HP, snacks, bananas
+const BTN_X = [-0.19, -0.063, 0.063, 0.19];
+const btBtns = BTN_X.map(x => { const p = btPanel(0.115, 0.07, 256, 156, x, -0.33); p.label = ''; p.hot = false; return p; });
+// the spark you steer, the slap timing bar
+const btSpark = new THREE.Mesh(new THREE.OctahedronGeometry(0.012), new THREE.MeshBasicMaterial({ color: 0x5ef2ff })); btSpark.add(new THREE.Mesh(S(0.02, 10, 8), new THREE.MeshBasicMaterial({ color: 0x5ef2ff, transparent: true, opacity: 0.3 }))); btBox.add(btSpark);
+const btBar = new THREE.Group(); btBox.add(btBar);
+{ const track = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.05), new THREE.MeshBasicMaterial({ color: 0x2a1640 })); track.position.z = 0.004; btBar.add(track);
+  const gold = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0xffd447 })); gold.position.z = 0.005; btBar.add(gold); }
+const btMarker = new THREE.Mesh(new THREE.PlaneGeometry(0.008, 0.07), new THREE.MeshBasicMaterial({ color: 0xffffff })); btMarker.position.z = 0.006; btBar.add(btMarker);
+// bullets (drawn inside the box)
+const BT_GEO = { orb: S(1, 10, 8), diamond: new THREE.OctahedronGeometry(1), shard: new THREE.ConeGeometry(0.6, 2.2, 6), star: new THREE.IcosahedronGeometry(1, 0) };
+const btInst = {}; for (const k in BT_GEO) { const im = new THREE.InstancedMesh(BT_GEO[k], new THREE.MeshBasicMaterial(), 300); im.setColorAt(0, new THREE.Color()); im.count = 0; im.frustumCulled = false; btBox.add(im); btInst[k] = im; }
+const BT = { active: false, phase: '', def: null, model: null, roam: null, hp: 20, max: 20, ehp: 1, emax: 1, calm: 0, snacks: 3, sx: 150, sy: 220, inv: 0, bullets: [], lasers: [], ems: [], t: 0, dur: 0, atk: 0, msgs: [], msg: '', shown: 0, hold: 0, then: null, barT: 0, flash: 0, shake: 0, prevHand: [new THREE.Vector3(), new THREE.Vector3()], speed: [0, 0], pressCd: 0, keys: {} };
+const _btv = new THREE.Vector3(), _btq = new THREE.Quaternion(), _bts = new THREE.Vector3(), _btm = new THREE.Matrix4(), _bte = new THREE.Euler(), _btz = new THREE.Vector3(0, 0, 1);
+function drawPanelText(p, lines, border) {
+  const c = p.cv.getContext('2d'), W = p.cv.width, H = p.cv.height; c.clearRect(0, 0, W, H);
+  if (border) { c.fillStyle = 'rgba(10,5,25,0.9)'; c.fillRect(0, 0, W, H); c.strokeStyle = border; c.lineWidth = 6; c.strokeRect(3, 3, W - 6, H - 6); }
+  lines.forEach(f => f(c, W, H)); p.tex.needsUpdate = true;
+}
+function bar(c, x, y, w, h, f, col) { c.fillStyle = '#2a1640'; c.fillRect(x, y, w, h); c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, f)), h); c.strokeStyle = '#fff'; c.lineWidth = 3; c.strokeRect(x, y, w, h); }
+function drawBtTop() { const d = BT.def; drawPanelText(btTop, [c => { c.font = 'bold 44px monospace'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(d.name, 20, 55); c.font = 'bold 28px monospace'; c.fillText('HP', 400, 40); bar(c, 450, 25, 240, 30, BT.ehp / BT.emax, d.color); c.fillText('CALM', 400, 82); bar(c, 490, 70, 200, 24, BT.calm / 100, '#6dff9a'); c.fillStyle = BT.calm >= 100 ? '#6dff9a' : '#cbbcf0'; c.fillText(BT.calm >= 100 ? 'READY TO CHILL!' : '', 720, 82); }], d.color); }
+function drawBtBottom() { drawPanelText(btBottom, [c => { c.font = 'bold 40px monospace'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('YOU', 20, 42); bar(c, 120, 22, 300, 40, BT.hp / BT.max, BT.hp > 6 ? '#ffd447' : '#ff3b6b'); c.fillText(BT.hp + '/' + BT.max, 440, 42); c.fillStyle = '#ffd447'; c.fillText('SNACKS ' + BT.snacks + '   🍌 ' + bananas, 610, 42); }], '#9b5cff'); }
+function drawBtn(i, label, enabled = true) {
+  const p = btBtns[i]; p.label = label; p.enabled = enabled && !!label;
+  drawPanelText(p, [c => { if (!label) return; c.fillStyle = p.hot ? '#ffd447' : enabled ? 'rgba(20,10,40,0.95)' : 'rgba(20,10,40,0.5)'; c.fillRect(0, 0, 256, 156); c.strokeStyle = enabled ? '#ffd447' : '#555'; c.lineWidth = 8; c.strokeRect(4, 4, 248, 148); c.fillStyle = p.hot ? '#1a0b2e' : enabled ? '#fff' : '#777'; c.textAlign = 'center'; c.textBaseline = 'middle'; const words = label.split(' '); c.font = 'bold ' + (label.length > 10 ? 30 : 44) + 'px monospace'; if (words.length > 1 && label.length > 10) { c.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 128, 58); c.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 128, 100); } else c.fillText(label, 128, 80); }]);
+}
+function drawBtText(text) { drawPanelText(btText, [c => { c.fillStyle = '#fff'; c.font = 'bold 34px monospace'; c.textBaseline = 'top'; const words = ('› ' + text).split(' '); let line = '', y = 30; for (const w of words) { const t2 = line ? line + ' ' + w : w; if (c.measureText(t2).width > 460) { c.fillText(line, 24, y); y += 44; line = w; } else line = t2; } c.fillText(line, 24, y); }]); }
+function btSay(msgs, then) { BT.msgs = msgs.slice(); BT.then = then || null; btNext(); }
+function btNext() { if (!BT.msgs.length) { BT.msg = ''; const f = BT.then; BT.then = null; if (f) f(); return; } BT.msg = BT.msgs.shift(); BT.shown = 0; BT.hold = 0; BT.phase = 'talking'; drawBtText(''); btText.m.visible = true; }
+function setMenu() {
+  BT.phase = 'menu'; btText.m.visible = true; btBar.visible = false;
+  drawBtText(BT.def.flavor[Math.floor(Math.random() * BT.def.flavor.length)] + (renderer.xr.isPresenting ? ' (touch a button)' : ' (press 1-4)'));
+  ['SLAP', 'TALK', 'SNACK', 'CHILL'].forEach((l, i) => drawBtn(i, l, i !== 2 || BT.snacks > 0));
+}
+function clearBtns() { for (let i = 0; i < 4; i++) drawBtn(i, ''); }
+function startBattle(type, roam) {
+  if (BT.active) return;
+  const d = ENEMIES[type]; BT.active = true; BT.def = d; BT.roam = roam; BT.type = type;
+  BT.hp = BT.max; BT.ehp = BT.emax = d.hp; BT.calm = 0; BT.snacks = 3; BT.atk = 0; BT.bullets = []; clearBtLasers(); BT.inv = 0;
+  // the battle opens right in front of you
+  _e.setFromQuaternion(myPose.q, 'YXZ');
+  btRoot.position.set(Math.sin(_e.y) * -0.75, 0, Math.cos(_e.y) * -0.75).add(myPose.h); btRoot.position.y = myPose.h.y - 0.08;
+  btRoot.lookAt(myPose.h.x, btRoot.position.y, myPose.h.z); btRoot.visible = true;
+  btDim.position.copy(myPose.h); btDim.visible = true;
+  BT.model = d.make(); btRoot.add(BT.model.root); BT.model.root.position.set(0, 0.56, -0.2); BT.model.root.scale.setScalar(d.scale); BT.model.root.rotation.set(0, 0, 0);
+  if (roam) roam.model.root.visible = false;
+  sfx(200, 800, 0.25, 'square', 0.2); sfx(800, 200, 0.25, 'square', 0.15, 0.25);
+  for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.8, 150);
+  drawBtTop(); drawBtBottom(); clearBtns(); btSpark.visible = false; btBar.visible = false;
+  btSay(['A ' + d.name.toLowerCase() + ' blocks the way!'], setMenu);
+}
+function endBattle(result) {
+  BT.active = false; btRoot.visible = false; btDim.visible = false; BT.bullets = []; clearBtLasers();
+  if (BT.model) { btRoot.remove(BT.model.root); scene.remove(BT.model.root); BT.model = null; }
+  const r = BT.roam;
+  if (r) { if (result === 'lose') { r.model.root.visible = true; r.cd = 6; } else { r.alive = false; r.respawn = 60; } }
+  if (result === 'win') addBananas(5, 'YOU WON THE BATTLE');
+  if (result === 'chill') addBananas(8, 'YOU MADE A FRIEND (PEACE BONUS)');
+  if (result === 'lose') { teleport(SPAWN.x, SPAWN.y, SPAWN.z); banner('YOU GOT BONKED', 'BACK TO SPAWN. TRY TALKING NEXT TIME?', 2.5, '#ff3b6b'); }
+}
+function btChoose(i) {
+  if (BT.pressCd > 0) return; BT.pressCd = 0.35; sfx(660, 660, 0.06, 'square', 0.08);
+  if (BT.phase === 'menu') {
+    if (i === 0) { BT.phase = 'slap'; BT.barT = 0; btText.m.visible = false; btBar.visible = true; clearBtns(); return; }
+    if (i === 1) { BT.phase = 'talkpick'; BT.def.talks.forEach((tk, k) => drawBtn(k, tk.l)); drawBtn(3, 'BACK'); drawBtText('What do you say?'); return; }
+    if (i === 2) { if (BT.snacks <= 0) return; BT.snacks--; const heal = Math.min(8, BT.max - BT.hp); BT.hp += heal; drawBtBottom(); clearBtns(); sfx(523, 784, 0.2, 'triangle', 0.15); btSay(['You eat a banana. Yum. +' + heal + ' HP.'], enemyTurn); return; }
+    if (i === 3) { clearBtns(); if (BT.calm >= 100) { sfx(784, 1568, 0.5, 'sine', 0.15); btSay(['The ' + BT.def.name.toLowerCase() + ' is all chilled out. It waves goodbye.', 'You won without a single slap!'], () => endBattle('chill')); } else btSay(['It doesn\'t want to chill yet. Try TALKING to it first.'], enemyTurn); return; }
+  }
+  if (BT.phase === 'talkpick') {
+    if (i === 3) { setMenu(); return; }
+    const tk = BT.def.talks[i]; if (!tk) return; clearBtns();
+    BT.calm = Math.min(100, BT.calm + tk.c); drawBtTop();
+    btSay([tk.t, BT.calm >= 100 ? 'It looks really calm now. Maybe it wants to CHILL.' : 'It\'s getting calmer.'], enemyTurn);
+  }
+}
+function btSlap() { // the timing bar: slap when the line is in the gold
+  if (BT.phase !== 'slap' || BT.barT < 0.08) return;
+  const x = btMarker.position.x, acc = 1 - Math.min(1, Math.abs(x) / 0.22);
+  const dmg = Math.round(4 + acc * acc * 26); BT.phase = 'slapped';
+  BT.ehp = Math.max(0, BT.ehp - dmg); BT.flash = 1; BT.shake = 0.4; drawBtTop();
+  sfx(220, 60, 0.2, 'square', 0.3); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 100);
+  btBar.visible = false;
+  const word = acc > 0.85 ? 'PERFECT SLAP!' : acc > 0.5 ? 'Good slap!' : 'A little slap.';
+  if (BT.ehp <= 0) btSay([word + ' ' + dmg + ' damage!', 'The ' + BT.def.name.toLowerCase() + ' flies out of the box! You win!'], () => endBattle('win'));
+  else btSay([word + ' ' + dmg + ' damage!'], enemyTurn);
+}
+function enemyTurn() {
+  const a = BT.def.attacks[BT.atk++ % BT.def.attacks.length];
+  BT.phase = 'dodge'; BT.t = 0; BT.dur = a.dur; BT.ems = a.ems.map(e => ({ ...e, _next: e.start, _k: 0, _ang: 0, _alt: false }));
+  BT.sx = 150; BT.sy = 200; btText.m.visible = false; btBar.visible = false; btSpark.visible = true; clearBtns();
+}
+function btOrigin(o) {
+  switch (o) { case 'top': return { x: 150, y: -12 }; case 'bottom': return { x: 150, y: 312 }; case 'left': return { x: -12, y: 150 }; case 'right': return { x: 312, y: 150 };
+    case 'top-left': return { x: -10, y: -10 }; case 'top-right': return { x: 310, y: -10 }; case 'boss': return { x: 150, y: -40 };
+    case 'random-edge': { const s = Math.floor(Math.random() * 4), r = Math.random() * 300; return [{ x: r, y: -12 }, { x: 312, y: r }, { x: r, y: 312 }, { x: -12, y: r }][s]; }
+    default: return { x: 150, y: 150 }; }
+}
+function btShoot(e, x, y, ang, spd, extra = {}) { if (BT.bullets.length < 280) BT.bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: e.size || 6, col: new THREE.Color(e.color), shape: e.shape || 'orb', life: 0, ...extra }); }
+const btR = (a, b) => a + Math.random() * (b - a);
+function btFire(e) {
+  e._k++; const o = btOrigin(e.origin), toP = Math.atan2(BT.sy - o.y, BT.sx - o.x);
+  switch (e.type) {
+    case 'ring': { const n = Math.max(1, e.count | 0), b0 = e._k * e.spin * D2R; for (let i = 0; i < n; i++) btShoot(e, o.x, o.y, b0 + i * Math.PI * 2 / n, e.speed); break; }
+    case 'spiral': { e._ang += e.spin * D2R; const n = Math.max(1, e.arms | 0); for (let i = 0; i < n; i++) btShoot(e, o.x, o.y, e._ang + i * Math.PI * 2 / n, e.speed); break; }
+    case 'aimed': { const n = Math.max(1, e.count | 0), sp = e.spread * D2R; for (let i = 0; i < n; i++) btShoot(e, o.x, o.y, toP + (n === 1 ? 0 : -sp / 2 + sp * i / (n - 1)), e.speed); break; }
+    case 'rain': for (let i = 0; i < Math.max(1, e.count | 0); i++) btShoot(e, btR(8, 292), -12, Math.PI / 2 + btR(-1, 1) * e.drift * D2R * 0.5, e.speed * btR(0.85, 1.15)); break;
+    case 'wall': { let side = e.side; if (side === 'alternate') { e._alt = !e._alt; side = e._alt ? 'left' : 'right'; } const step = Math.max(10, e.size * 2.4), gc = btR(e.gap / 2 + 8, 300 - e.gap / 2 - 8);
+      for (let p = step / 2; p < 300; p += step) { if (Math.abs(p - gc) < e.gap / 2) continue; if (side === 'left') btShoot(e, -10, p, 0, e.speed); else if (side === 'right') btShoot(e, 310, p, Math.PI, e.speed); else if (side === 'top') btShoot(e, p, -10, Math.PI / 2, e.speed); else btShoot(e, p, 310, -Math.PI / 2, e.speed); } break; }
+    case 'laser': { const mk = orient => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(e.color), transparent: true, opacity: 0.5 })); m.position.z = 0.007; btBox.add(m); BT.lasers.push({ orient, pos: e.aim === 'player' ? (orient === 'horizontal' ? BT.sy : BT.sx) : btR(20, 280), width: e.width, t: 0, warn: e.warn, dur: 0.45, m }); sfx(900, 900, 0.06, 'square', 0.05); };
+      if (e.orient === 'both') { mk('horizontal'); mk('vertical'); } else mk(e.orient); break; }
+    case 'bouncer': for (let i = 0; i < Math.max(1, e.count | 0); i++) { const p = e.origin === 'boss' || e.origin === 'top' ? { x: btR(40, 260), y: 4 } : o; btShoot(e, p.x, p.y, btR(0.2, Math.PI - 0.2), e.speed, { bounces: e.bounces | 0 }); } break;
+    case 'homing': { const n = Math.max(1, e.count | 0); for (let i = 0; i < n; i++) btShoot(e, o.x + btR(-20, 20), o.y, toP + (i - (n - 1) / 2) * 0.5, e.speed, { homing: e.turn * D2R, maxLife: 5 }); break; }
+  }
+}
+function clearBtLasers() { for (const l of BT.lasers) { btBox.remove(l.m); l.m.material.dispose(); } BT.lasers = []; }
+function btHurt() {
+  if (BT.inv > 0) return; BT.inv = 1; BT.hp = Math.max(0, BT.hp - BT.def.dmg); drawBtBottom();
+  sfx(420, 90, 0.2, 'sawtooth', 0.25); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 120);
+  if (BT.hp <= 0) { BT.phase = 'lost'; BT.bullets = []; clearBtLasers(); btSpark.visible = false; btSay(['Ouch! You got bonked out of the battle.'], () => endBattle('lose')); }
+}
+// keep hands tracked while you stand still in a battle (no walking)
+function btHands(dt) {
+  hands.forEach((h, i) => { if (!h.source) return; handWorld(h, _btv); BT.speed[i] = _btv.distanceTo(BT.prevHand[i]) / Math.max(dt, 1e-3); BT.prevHand[i].copy(_btv); h.last.copy(_btv); });
+}
+addEventListener('keydown', e => {
+  if (!BT.active) return; BT.keys[e.code] = true;
+  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (n >= 0) btChoose(n);
+  if (e.code === 'Space' || e.code === 'KeyE') { btSlap(); e.preventDefault(); }
+});
+addEventListener('keyup', e => { BT.keys[e.code] = false; });
+function updateBattle(dt, t) {
+  if (!BT.active) return;
+  BT.pressCd -= dt; BT.inv -= dt; BT.flash = Math.max(0, BT.flash - dt * 3); BT.shake = Math.max(0, BT.shake - dt);
+  btDim.position.copy(myPose.h);
+  const m = BT.model; if (m) { m.root.position.set(Math.sin(t * 40) * 0.02 * BT.shake, 0.56 + Math.sin(t * 2) * 0.02, -0.2); m.root.rotation.y = Math.sin(t * 0.8) * 0.3; if (m.wings) m.wings.forEach((w, i) => { w.rotation.y = (i ? 1 : -1) * Math.sin(t * 14) * 0.7; }); if (m.blob) m.root.scale.set(BT.def.scale * (1 + Math.sin(t * 5) * 0.06), BT.def.scale * (1 - Math.sin(t * 5) * 0.06), BT.def.scale); m.root.visible = BT.flash < 0.5 || Math.floor(t * 20) % 2 === 0; }
+  // messages type out in the box
+  if (BT.phase === 'talking' && BT.msg) {
+    if (BT.shown < BT.msg.length) { const b0 = Math.floor(BT.shown); BT.shown = Math.min(BT.msg.length, BT.shown + dt * 40); if (Math.floor(BT.shown) !== b0) { drawBtText(BT.msg.slice(0, Math.floor(BT.shown))); if (b0 % 3 === 0) sfx(520, 520, 0.03, 'square', 0.04); } }
+    else if ((BT.hold += dt) > 1.2 + BT.msg.length * 0.025) btNext();
+  }
+  // VR: touch buttons; a fast swing (or trigger) slaps
+  const xr = renderer.xr.isPresenting;
+  if (xr) {
+    let any = false;
+    btBtns.forEach((p, i) => { let hot = false; for (const h of hands) { if (!h.source) continue; btRoot.worldToLocal(_btv.copy(h.last)); if (Math.abs(_btv.x - p.m.position.x) < 0.065 && Math.abs(_btv.y - p.m.position.y) < 0.045 && Math.abs(_btv.z) < 0.08) hot = true; }
+      if (hot !== p.hot) { p.hot = hot; if (p.label) drawBtn(i, p.label, p.enabled); }
+      if (hot && p.enabled) { btChoose(i); any = true; } });
+    if (BT.phase === 'slap' && (BT.speed.some(s => s > 1.6) || hands.some(h => h.source?.gamepad?.buttons[0]?.pressed))) btSlap();
+  }
+  if (BT.phase === 'slap') { BT.barT += dt; const k = BT.barT / 1.1; btMarker.position.x = -0.22 + k * 0.44; if (k >= 1) { BT.phase = 'slapped'; btBar.visible = false; btSay(['You missed! Too slow.'], enemyTurn); } }
+  if (BT.phase === 'dodge') {
+    // steer the spark: your right hand (VR) or WASD / arrows (PC)
+    if (xr) { const h = hands.find(x => x.source?.handedness === 'right') || hands.find(x => x.source); if (h) { btRoot.worldToLocal(_btv.copy(h.last)); BT.sx = 150 + _btv.x / BU; BT.sy = 150 - _btv.y / BU; } }
+    else { const sp = 150 * dt, K = BT.keys; BT.sx += ((K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0)) * sp; BT.sy += ((K.KeyS || K.ArrowDown ? 1 : 0) - (K.KeyW || K.ArrowUp ? 1 : 0)) * sp; }
+    BT.sx = Math.max(7, Math.min(293, BT.sx)); BT.sy = Math.max(7, Math.min(293, BT.sy));
+    btLocal(BT.sx, BT.sy, btSpark.position); btSpark.position.z = 0.012; btSpark.rotation.y += dt * 4; btSpark.visible = BT.inv <= 0 || Math.floor(t * 16) % 2 === 0;
+    BT.t += dt;
+    if (BT.t <= BT.dur) for (const e of BT.ems) { if (e.every <= 0.01) continue; let g = 0; while (BT.t >= e._next && e._next <= Math.min(e.end, BT.dur) && g++ < 50) { if (BT.t >= e.start) btFire(e); e._next += e.every; } }
+    else if (BT.t > BT.dur + 0.8 && !BT.bullets.length && !BT.lasers.length || BT.t > BT.dur + 2.5) { BT.bullets = []; clearBtLasers(); btSpark.visible = false; setMenu(); }
+    for (const b of BT.bullets) {
+      b.life += dt;
+      if (b.homing) { const want = Math.atan2(BT.sy - b.y, BT.sx - b.x), cur = Math.atan2(b.vy, b.vx); let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; const na = cur + Math.max(-b.homing * dt, Math.min(b.homing * dt, d)), s = Math.hypot(b.vx, b.vy); b.vx = Math.cos(na) * s; b.vy = Math.sin(na) * s; }
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.bounces > 0) { if ((b.x < b.r && b.vx < 0) || (b.x > 300 - b.r && b.vx > 0)) { b.vx *= -1; b.bounces--; } if ((b.y < b.r && b.vy < 0 && b.life > 0.3) || (b.y > 300 - b.r && b.vy > 0)) { b.vy *= -1; b.bounces--; } }
+      if (Math.hypot(b.x - BT.sx, b.y - BT.sy) < b.r * 0.8 + 4) btHurt();
+    }
+    BT.bullets = BT.bullets.filter(b => b.x > -40 && b.x < 340 && b.y > -60 && b.y < 340 && !(b.maxLife && b.life > b.maxLife));
+    for (const l of BT.lasers) {
+      l.t += dt; const active = l.t > l.warn && l.t < l.warn + l.dur, w = active ? l.width * Math.min(1, (l.t - l.warn) * 10) : 2;
+      l.m.material.opacity = active ? 0.85 : 0.25 + 0.25 * Math.sin(l.t * 30);
+      if (l.orient === 'horizontal') { btLocal(150, l.pos, l.m.position); l.m.scale.set(BOXM, w * BU, 1); } else { btLocal(l.pos, 150, l.m.position); l.m.scale.set(w * BU, BOXM, 1); }
+      l.m.position.z = 0.007;
+      if (active && (l.orient === 'horizontal' ? Math.abs(BT.sy - l.pos) : Math.abs(BT.sx - l.pos)) < l.width / 2 + 3) btHurt();
+    }
+    const old = BT.lasers; BT.lasers = old.filter(l => l.t < l.warn + l.dur + 0.15); for (const l of old) if (!BT.lasers.includes(l)) { btBox.remove(l.m); l.m.material.dispose(); }
+  }
+  // draw bullets (clipped to the box)
+  const n = {}; for (const k in btInst) n[k] = 0;
+  for (const b of BT.bullets) {
+    if (b.x < -5 || b.x > 305 || b.y < -5 || b.y > 305) continue;
+    const im = btInst[b.shape] || btInst.orb, i = n[b.shape in btInst ? b.shape : 'orb']++;
+    btLocal(b.x, b.y, _btv); _btv.z = 0.01;
+    if (b.shape === 'shard') _btq.setFromAxisAngle(_btz, Math.atan2(-b.vy, b.vx) - Math.PI / 2); else _btq.setFromEuler(_bte.set(t * 3, t * 4, 0));
+    _bts.setScalar(b.r * BU); _btm.compose(_btv, _btq, _bts); im.setMatrixAt(i, _btm); im.setColorAt(i, b.col);
+  }
+  for (const k in btInst) { btInst[k].count = n[k]; if (n[k]) { btInst[k].instanceMatrix.needsUpdate = true; btInst[k].instanceColor.needsUpdate = true; } }
+}
+
+// ---------- monsters roaming the world (touch one to battle) ----------
+const exCv = document.createElement('canvas'); exCv.width = exCv.height = 64;
+{ const c = exCv.getContext('2d'); c.font = 'bold 58px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 8; c.strokeStyle = '#2a1640'; c.strokeText('!', 32, 34); c.fillStyle = '#ff5c8a'; c.fillText('!', 32, 34); }
+const exTex = new THREE.CanvasTexture(exCv); exTex.colorSpace = THREE.SRGBColorSpace;
+const ROAM = [['gloom', -22, 28], ['gloom', -36, 34], ['bat', 20, -34], ['bat', -28, -36], ['crab', 12, 46], ['crab', 46, -42]].map(([type, x, z]) => {
+  const model = ENEMIES[type].make(); if (model.root.parent !== scene) scene.add(model.root); model.root.visible = true;
+  model.root.scale.setScalar(type === 'gloom' ? 0.32 : type === 'bat' ? 0.4 : 0.3);
+  const ex = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ map: exTex, transparent: true, depthWrite: false })); ex.visible = false; scene.add(ex);
+  return { type, model, ex, home: new THREE.Vector3(x, 0, z), pos: new THREE.Vector3(x, 0, z), target: new THREE.Vector3(x, 0, z), t: Math.random() * 3, alive: true, respawn: 0, cd: 0, vy: 0, hop: 0 };
+});
+function updateRoam(dt, t) {
+  const h = myPose.h;
+  for (const r of ROAM) {
+    if (!r.alive) { if ((r.respawn -= dt) <= 0) { r.alive = true; r.pos.copy(r.home); r.model.root.visible = true; } r.ex.visible = false; continue; }
+    if (BT.active && BT.roam === r) continue;
+    r.cd -= dt; r.t -= dt;
+    if (r.t <= 0) { r.t = 2 + Math.random() * 3; r.target.set(r.home.x + (Math.random() - 0.5) * 7, 0, r.home.z + (Math.random() - 0.5) * 7); }
+    _btv.set(r.target.x - r.pos.x, 0, r.target.z - r.pos.z); const d = _btv.length(); if (d > 0.1) r.pos.addScaledVector(_btv, Math.min(d, 0.9 * dt) / d);
+    const g = groundAt(r.pos.x, r.pos.z, 30); const gy = g > -1e8 ? g : 0;
+    let y = gy + 0.25;
+    if (r.type === 'gloom') { r.hop = (r.hop + dt * 2.6) % 1; y = gy + 0.12 + Math.sin(r.hop * Math.PI) * 0.4; }
+    if (r.type === 'bat') { y = gy + 1.3 + Math.sin(t * 3 + r.home.x) * 0.2; r.model.wings.forEach((w, i) => { w.rotation.y = (i ? 1 : -1) * Math.sin(t * 14) * 0.7; }); }
+    if (r.type === 'crab') { y = gy + 0.16; r.model.legs.forEach((l, i) => { l.rotation.x = Math.sin(t * 12 + i * 2) * 0.35; }); }
+    r.model.root.position.set(r.pos.x, y, r.pos.z);
+    const near = Math.hypot(h.x - r.pos.x, h.z - r.pos.z);
+    r.model.root.rotation.y = near < 9 ? Math.atan2(h.x - r.pos.x, h.z - r.pos.z) : Math.atan2(_btv.x, _btv.z);
+    r.ex.visible = near < 6 && !BT.active; if (r.ex.visible) { r.ex.position.set(r.pos.x, y + 0.6 + Math.sin(t * 5) * 0.05, r.pos.z); r.ex.lookAt(h); }
+    if (!BT.active && r.cd <= 0) { const c = r.model.root.position; if (h.distanceTo(c) < 0.75 || myPose.l.distanceTo(c) < 0.5 || myPose.r.distanceTo(c) < 0.5) startBattle(r.type, r); }
+  }
+}
+
+window.__boss = { btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, hatStand, useHat, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
 
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
@@ -2333,7 +2720,7 @@ function updateDbg(dt) {
     'head ' + (camera.position.y * PLAYER_SCALE).toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
     'fall ' + vel.y.toFixed(2) + '   space ' + (renderer.xr.getReferenceSpace() ? 'ok' : 'NONE'),
     'L ' + hs(L), 'R ' + hs(R),
-    'cam: click a stick to hold it',
+    'cam: click a stick   bananas ' + bananas,
     dbg.errs.length ? 'ERR ' + dbg.errs[dbg.errs.length - 1] : 'no errors',
   ];
   const c = dbgCv.getContext('2d');
@@ -2350,10 +2737,10 @@ const clock = new THREE.Clock();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 1 / 30), t = clock.elapsedTime;
-  if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } updateXR(dt); }
-  else updateDesktop(dt);
+  if (renderer.xr.isPresenting) { try { renderer.xr.updateCamera(camera); } catch (e) { } if (BT.active) btHands(dt); else updateXR(dt); }
+  else if (BT.active) camera.rotation.set(pitch, yaw, 0, 'YXZ'); else updateDesktop(dt);
   if (rig.position.y < -15) respawn();
-  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
+  updateMyPose(t, dt); updateRemotes(dt); updateVoice(); updateBoss(dt, t); updateStory(dt, t); updateC2(dt, t); updateCamp(dt, t); updateBattle(dt, t); updateRoam(dt, t); updateHats(dt, t); updateLiv(dt); renderLivFeed(dt); updateDbg(dt);
 
   // ambient animation
   beamMat.opacity = 0.18 + Math.sin(t * 2) * 0.06;
