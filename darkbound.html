@@ -1747,7 +1747,13 @@ function makeMonkey(body, o) { // a toon monkey: round head, heart-shaped face, 
   });
   const tail = new THREE.CatmullRomCurve3([V(0, -0.42, -0.15), V(0.08, -0.52, -0.3), V(0.2, -0.38, -0.4), V(0.24, -0.18, -0.34), V(0.15, -0.1, -0.26)]);
   part(body, new THREE.TubeGeometry(tail, 20, 0.025 * k, 8), fur, null, null, 0.006);
-  return { eyes, smile, cheekM, cheeks, hands, k };
+  const legs = [-1, 1].map(s => { // short legs, big monkey feet: they stand on the ground
+    const g = new THREE.Group(); g.position.set(s * 0.09 * k, -0.44 * k, 0); body.add(g);
+    part(g, new THREE.CylinderGeometry(0.045 * k, 0.04 * k, 0.16 * k, 8), fur, [0, -0.08 * k, 0], null, 0.006);
+    part(g, S(0.06 * k, 10, 8), face, [0, -0.17 * k, 0.04 * k], [1, 0.6, 1.5], 0.006);
+    return g;
+  });
+  return { eyes, smile, cheekM, cheeks, hands, legs, k, stand: 0.646 * k };
 }
 function makeClaudeModel() { // Claude: a warm-orange monkey light-keeper with a glowing lantern bulb on top, riding a hover ring
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
@@ -1758,10 +1764,26 @@ function makeClaudeModel() { // Claude: a warm-orange monkey light-keeper with a
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 8, 32), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
   ring.rotation.x = Math.PI / 2; ring.position.y = -0.7; root.add(ring);                                                     // hover ring
   const aura = new THREE.Mesh(S(0.6, 18, 12), new THREE.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
-  aura.position.y = -0.15; root.add(aura);
-  return { root, body, eyes: m.eyes, hands: m.hands, ring, bulb, smile: m.smile, cheekM: m.cheekM, cheeks: m.cheeks };
+  aura.position.y = 0; aura.scale.setScalar(0.7); root.add(aura);
+  ring.visible = false; // no more hovering: Claude walks
+  body.scale.setScalar(0.72); // about your gorilla's size
+  return { root, body, eyes: m.eyes, hands: m.hands, legs: m.legs, stand: m.stand * 0.72, ring, bulb, smile: m.smile, cheekM: m.cheekM, cheeks: m.cheeks };
 }
 const claude = makeClaudeModel(); scene.add(claude.root);
+// ground under a point: the highest box top below "ceiling"
+function groundAt(x, z, ceiling) { let g = -Infinity; for (const b of solid) if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= ceiling && b.max.y > g) g = b.max.y; return g; }
+// a monkey walks toward a goal on the ground: hops up onto steps, leaps over gaps at the same height
+const _mw = new THREE.Vector3();
+function walkMonkey(o, goal, stand, speed, dt, appearDist = 14) {
+  _mw.set(goal.x - o.pos.x, 0, goal.z - o.pos.z); const dist = _mw.length();
+  if (dist > appearDist) { o.pos.x = goal.x; o.pos.z = goal.z; o.pos.y = goal.y; }                    // teleported: just appear there
+  else if (dist > 0.06) o.pos.addScaledVector(_mw, Math.min(dist, speed * dt) / dist);
+  o.walk = (o.walk || 0) + ((dist > 0.15 ? 1 : 0) - (o.walk || 0)) * (1 - Math.exp(-8 * dt));
+  const ceil = Math.max(o.pos.y - stand, goal.y - stand) + 0.7;
+  const g = groundAt(o.pos.x, o.pos.z, ceil);
+  const wantY = g > -1e8 ? g + stand : o.pos.y;                                                  // no ground under? keep leaping at this height
+  o.pos.y += (wantY - o.pos.y) * (1 - Math.exp(-10 * dt));
+}
 const CL = { pos: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), goal: new THREE.Vector3(SX + 1.6, 1.8, SZ - 1), yaw: 0, talk: 0 };
 claude.root.position.copy(CL.pos);
 // name tag + speech bubble (big enough to read in VR)
@@ -1866,9 +1888,11 @@ function updateStory(dt, t) {
   if (STORY.cd <= 0 && Math.hypot(h.x, h.z) < 1.3 && h.y < 3.5 && !inHollow(h)) startStory();
   const here = inHollow(h);
   // Claude: float toward the goal, bob, face you, wave while talking
-  CL.pos.lerp(CL.goal, 1 - Math.exp(-1.6 * dt));
-  claude.root.position.copy(CL.pos); claude.root.position.y += Math.sin(t * 2) * 0.08;
-  const lookP = CL.lookAt || h, want = Math.atan2(lookP.x - CL.pos.x, lookP.z - CL.pos.z); let d = want - CL.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+  walkMonkey(CL, CL.goal, claude.stand, 2.4, dt);
+  claude.root.position.copy(CL.pos); claude.root.position.y += Math.abs(Math.sin(t * 10)) * 0.04 * CL.walk;
+  claude.legs.forEach((l, i) => { l.rotation.x = Math.sin(t * 10 + i * Math.PI) * 0.7 * CL.walk; });
+  const lookP = CL.lookAt || h, want = CL.walk > 0.5 ? Math.atan2(CL.goal.x - CL.pos.x, CL.goal.z - CL.pos.z) : Math.atan2(lookP.x - CL.pos.x, lookP.z - CL.pos.z); let d = want - CL.yaw; // face where he walks, then face you
+ while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   CL.yaw += d * (1 - Math.exp(-4 * dt)); claude.root.rotation.y = CL.yaw;
   claude.body.rotation.z = Math.sin(t * 0.8) * 0.2 + Math.sin(t * 2.3) * 0.05; // big puzzled head tilts
   const talking = !!STORY.cur && STORY.shown < STORY.cur.length;
@@ -2160,6 +2184,7 @@ function makeDory() { // Dory: a lavender monkey who keeps the flower lanterns
   part(lamp, new THREE.CylinderGeometry(0.008, 0.008, 0.32, 6), toon(0x4f8a4a), [0, 0.12, 0], null, 0);
   part(lamp, new THREE.ConeGeometry(0.08, 0.12, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xff9ad5, side: THREE.DoubleSide }), [0, 0.32, 0], null, 0).rotation.x = Math.PI;
   part(lamp, S(0.04, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1a8 }), [0, 0.3, 0], null, 0);
+  o.body.scale.setScalar(0.82); o.legs = m.legs; o.stand = m.stand * 0.82; o.pos = o.root.position;
   o.root.visible = false;
   return Object.assign(o, { name: 'DORY', col: '#c99bff', h: 0.9, spot: new THREE.Vector3(B3X - 2.2, 1.06, B3Z - 4.5) });
 }
@@ -2182,7 +2207,7 @@ function startCamp() {
   CL.pos.set(B3X + 1.5, 1.8, B3Z + 7); CL.goal.copy(CL.pos); CL.lookAt = null; B3.blush = 0;
   if (!B3.npcs.length) { B3.npcs = [makePip(), makeGrumble(), makeNova()]; B3.dory = makeDory(); }
   for (const n of B3.npcs) n.met = false;
-  B3.dory.root.visible = false; B3.dory.root.position.set(B3X - 13, 4, B3Z - 13);
+  B3.dory.root.visible = false; B3.dory.root.position.set(B3X, 1.2, B3Z + 11.5); // she'll walk in through the gate
   if (B3.home) { scene.remove(B3.home); B3.home = null; } if (B3.tell) { scene.remove(B3.tell); B3.tell = null; }
   sfx(200, 1200, 0.6, 'sine', 0.25); banner('CHAPTER 2.5', 'THE LANTERN CAMP', 3, '#ff9ad5');
   B3.state = 'intro';
@@ -2229,8 +2254,8 @@ function updateCamp(dt, t) {
   }
   const d = B3.dory;
   if (d && d.root.visible) { // Dory floats in, then hovers by the fire
-    d.root.position.lerp(d.spot, 1 - Math.exp(-1.2 * dt)); d.root.position.y += Math.sin(t * 1.8) * 0.004;
-    d.root.rotation.y = Math.atan2(h.x - d.root.position.x, h.z - d.root.position.z);
+    walkMonkey(d, d.spot, d.stand, 1.8, dt, 40); d.legs.forEach((l, i) => { l.rotation.x = Math.sin(t * 9 + i * Math.PI) * 0.7 * d.walk; });
+    d.root.rotation.y = d.walk > 0.5 ? Math.atan2(d.spot.x - d.pos.x, d.spot.z - d.pos.z) : Math.atan2(h.x - d.root.position.x, h.z - d.root.position.z);
     d.body.rotation.z = Math.sin(t * 1.4) * 0.08;
     // Claude gets flustered near Dory
     const near = claude.root.position.distanceTo(d.root.position) < 4.5 && B3.state !== 'secret';
