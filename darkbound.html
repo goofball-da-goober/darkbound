@@ -55,11 +55,12 @@ const G = 9.8;            // gravity
 const HAND_R = 0.07;      // hand collision sphere
 const HEAD_R = 0.2;       // head collision sphere
 const FEET_R = 0.3;       // body/feet sphere
-const JUMP_MULT = 1.1;    // release velocity multiplier
+const JUMP_MULT = 1.2;    // release velocity multiplier
 const MAX_JUMP = 6.5;     // max launch speed (m/s)
 const MIN_RELEASE = 0.4;  // min speed before a release counts as a jump
 const HIST = 6;           // frames of velocity history
 const MAX_STEP = 0.3;     // max body move per frame from hands (anti tracking-glitch)
+const PLAYER_SCALE = 0.62;  // gorilla-sized player, like Gorilla Tag: your real height shrinks so your gorilla stands on the ground
 const SPAWN = new THREE.Vector3((Math.random() - 0.5) * 4.4, 0, 6.6 + Math.random() * 0.9); // spread players out, clear of the pillars at x=±3.4
 
 // seeded rng so the map is always the same
@@ -81,6 +82,7 @@ document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
 const rig = new THREE.Group(); // player root: moved by the locomotion
+rig.scale.setScalar(PLAYER_SCALE);
 scene.add(rig);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 500);
 camera.position.set(0, 1.6, 0);
@@ -294,8 +296,8 @@ const _h = new THREE.Vector3(), _p = new THREE.Vector3(), _f = new THREE.Vector3
 const _cur = new THREE.Vector3(), _d = new THREE.Vector3(), _hit = new THREE.Vector3(), _v = new THREE.Vector3(), move = new THREE.Vector3();
 const bodyPush = new THREE.Vector3();
 
-const headWorld = out => out.copy(camera.position).applyQuaternion(rig.quaternion).add(rig.position);
-const handWorld = (h, out) => out.copy(h.grip.position).applyQuaternion(rig.quaternion).add(rig.position);
+const headWorld = out => out.copy(camera.position).multiplyScalar(PLAYER_SCALE).applyQuaternion(rig.quaternion).add(rig.position);
+const handWorld = (h, out) => out.copy(h.grip.position).multiplyScalar(PLAYER_SCALE).applyQuaternion(rig.quaternion).add(rig.position);
 
 // keep head + feet spheres out of geometry by moving the whole rig
 function resolveBody() {
@@ -891,7 +893,7 @@ async function enterVR() {
   if (vrStarting || renderer.xr.isPresenting || !navigator.xr) return;
   vrStarting = true;
   try {
-    const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+    const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });
     await renderer.xr.setSession(session);
   } catch (e) {
     vrStart.hidden = false;
@@ -931,7 +933,7 @@ function updateDbg(dt) {
   const hs = h => !h ? 'NONE' : (h.source.gamepad ? 'ctrl' : 'HAND-TRACK') + ' y' + (h.last.y - rig.position.y).toFixed(2) + (h.coll ? ' TOUCH' : '');
   const lines = [
     'DARKBOUND INFO   fps ' + dbg.fps,
-    'head ' + camera.position.y.toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
+    'head ' + (camera.position.y * PLAYER_SCALE).toFixed(2) + 'm   body y ' + rig.position.y.toFixed(2),
     'fall ' + vel.y.toFixed(2) + '   space ' + (renderer.xr.getReferenceSpace() ? 'ok' : 'NONE'),
     'L ' + hs(L), 'R ' + hs(R),
     dbg.errs.length ? 'ERR ' + dbg.errs[dbg.errs.length - 1] : 'no errors',
