@@ -29,6 +29,7 @@
   #vrStart button{font:bold 42px/1 "Lilita One",system-ui,sans-serif;letter-spacing:6px;color:#07121a;background:#5ef2ff;border:0;border-radius:14px;padding:28px 64px;cursor:pointer;box-shadow:0 0 30px #5ef2ff88}
   #vrStart button:focus-visible{outline:4px solid #ffd447;outline-offset:4px}
   #vrStart p{color:#b9a3e8;font-size:20px;margin:0}
+  #vrStart #vrPlay{font-size:26px;letter-spacing:3px;padding:16px 40px;background:transparent;color:#e9e2ff;border:3px solid #9b5cff;box-shadow:none}
   body.tv #toast{font-size:22px;padding:12px 26px}body.tv #banner{font-size:44px}body.tv #banner small{font-size:20px}body.tv #hud{font-size:16px;width:440px}body.tv #hud .top .t{font-size:19px}body.tv #camPanel{transform:translateY(-50%) scale(1.25);transform-origin:right center}
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -732,6 +733,7 @@ let MY_COLOR = SET.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)];
 // what are you playing on? (VR headset, computer, phone or tablet)
 const UA = navigator.userAgent;
 const CONSOLE = /Xbox Series S/i.test(UA) ? 'XBOX SERIES S' : /PlayStation 6|PS6/i.test(UA) ? 'PS6' : /Xbox/i.test(UA) ? 'XBOX' : /PlayStation/i.test(UA) ? 'PLAYSTATION' : '';
+try { if (/Xbox/i.test(UA) && 'gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { }
 const CONSOLE_DISC = CONSOLE === 'XBOX SERIES S' || CONSOLE === 'PS6'; // these two show DISC
 let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : CONSOLE ? 'pc' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
 SET.gfx ||= 'auto';
@@ -5566,7 +5568,7 @@ addEventListener('keydown', e => { // PC / phone ACT near the VIG button, skins,
 // left stick moves, right stick looks; buttons press the same keys a keyboard would, so everything in the game works
 const PAD = { idx: -1, kind: '', prev: [], last: 0, moved: false };
 const PAD_KEYS = { 0: 'Space', 1: 'KeyC', 2: 'KeyE', 3: 'KeyV', 4: 'KeyG', 5: 'KeyP', 6: 'ShiftLeft', 7: 'KeyE', 8: 'Tab', 9: 'KeyT', 10: 'KeyR', 11: 'KeyK', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
-const padKind = id => /054c|playstation|dualsense|dualshock|wireless controller/i.test(id) ? 'ps' : 'xbox';
+const padKind = id => /xbox|045e|xinput/i.test(id) ? 'xbox' : /054c|playstation|dualsense|dualshock|wireless controller/i.test(id) ? 'ps' : 'xbox'; // Xbox first: its pad is also called a 'Wireless Controller'
 const BTN = { xbox: { a: 'Ⓐ', b: 'Ⓑ', x: 'Ⓧ', y: 'Ⓨ', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', menu: '☰', view: '⧉', name: 'XBOX CONTROLLER' }, ps: { a: '✕', b: '○', x: '□', y: '△', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2', menu: 'OPTIONS', view: 'CREATE', name: 'PLAYSTATION CONTROLLER' } };
 function padKey(code, down) { dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, key: code === 'Space' ? ' ' : code === 'Enter' ? 'Enter' : code === 'Escape' ? 'Escape' : '' })); }
 function padCode(i) { // what a button means right now (typing on the COMPUTAH and battles use the pad a little differently)
@@ -5581,6 +5583,7 @@ addEventListener('gamepaddisconnected', e => { if (e.gamepad.index !== PAD.idx) 
 function updateGamepad(dt) {
   if (renderer.xr.isPresenting || PAD.idx < 0) return;
   const gp = navigator.getGamepads?.()[PAD.idx]; if (!gp || !gp.connected) return;
+  if (!vrStart.hidden) { const a = !!gp.buttons[0]?.pressed; if (a && !PAD.startA) document.getElementById('vrPlay').click(); PAD.startA = a; return; }
   const dz = v => Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82;
   const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
   if (lx || ly || PAD.moved) { TOUCH.x = lx; TOUCH.y = ly; PAD.moved = !!(lx || ly); } // the same input the phone joystick uses (walking + dodging in battles)
@@ -5772,7 +5775,8 @@ function updateSaveStars(dt, t) {
 // ================= VR-FIRST START (Quest app launches straight into VR) =================
 const vrStart = document.createElement('div');
 vrStart.id = 'vrStart';
-vrStart.innerHTML = '<img src="logo.png" alt="Darkbound"><button id="vrGo">ENTER VR</button><p id="vrMsg">Put your headset on and press the button.</p>';
+vrStart.innerHTML = '<img src="logo.png" alt="Darkbound"><button id="vrGo">ENTER VR</button><button id="vrPlay">PLAY ON SCREEN</button><p id="vrMsg">Put your headset on and press ENTER VR, or play on your screen.</p>';
+const DEVICE0 = DEVICE, DEVICE_NAME0 = DEVICE_NAME;
 vrStart.hidden = true;
 document.body.appendChild(vrStart);
 const isQuestApp = matchMedia('(display-mode: standalone)').matches || document.referrer.startsWith('android-app://');
@@ -5789,10 +5793,13 @@ async function enterVR() {
   }
   vrStarting = false;
 }
+document.getElementById('vrPlay').addEventListener('click', () => { // no headset: play on the screen (PC, TV, console)
+  ensureAudio(); vrStart.hidden = true; DEVICE = DEVICE0; DEVICE_NAME = DEVICE_NAME0; document.getElementById('hud').style.display = DEVICE === 'mobile' ? 'none' : ''; document.querySelector('#VRButton')?.style.removeProperty('display'); toast(CONSOLE ? 'PLAYING ON ' + CONSOLE + ' • USE YOUR CONTROLLER' : 'PLAYING ON SCREEN', 2.5);
+});
 document.getElementById('vrGo').addEventListener('click', () => { ensureAudio(); if (SET.mic !== 'off') enableMic(); enterVR(); });
 if (navigator.xr) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => {
-    if (!ok) return;                                   // a PC: keep the desktop preview and its instructions
+    if (!ok || CONSOLE) return;                        // a PC or a console (Xbox can say it supports VR, but there's no headset): play on the screen
     DEVICE = 'vr'; DEVICE_NAME = 'VR HEADSET';
     document.getElementById('hud').style.display = 'none';
     document.querySelector('#VRButton')?.style.setProperty('display', 'none');
