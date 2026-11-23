@@ -29,8 +29,10 @@
   #vrStart button{font:bold 42px/1 "Lilita One",system-ui,sans-serif;letter-spacing:6px;color:#07121a;background:#5ef2ff;border:0;border-radius:14px;padding:28px 64px;cursor:pointer;box-shadow:0 0 30px #5ef2ff88}
   #vrStart button:focus-visible{outline:4px solid #ffd447;outline-offset:4px}
   #vrStart p{color:#b9a3e8;font-size:20px;margin:0}
+  body.tv #toast{font-size:22px;padding:12px 26px}body.tv #banner{font-size:44px}body.tv #banner small{font-size:20px}body.tv #hud{font-size:16px;width:440px}body.tv #hud .top .t{font-size:19px}body.tv #camPanel{transform:translateY(-50%) scale(1.25);transform-origin:right center}
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.1/dist/es-module-shims.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -726,6 +728,10 @@ const UA = navigator.userAgent;
 const CONSOLE = /Xbox Series S/i.test(UA) ? 'XBOX SERIES S' : /PlayStation 6|PS6/i.test(UA) ? 'PS6' : /Xbox/i.test(UA) ? 'XBOX' : /PlayStation/i.test(UA) ? 'PLAYSTATION' : '';
 const CONSOLE_DISC = CONSOLE === 'XBOX SERIES S' || CONSOLE === 'PS6'; // these two show DISC
 let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : CONSOLE ? 'pc' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
+SET.gfx ||= 'auto';
+const LOWGFX = SET.gfx === 'low' || (SET.gfx === 'auto' && (!!CONSOLE || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 2)));
+if (LOWGFX) renderer.setPixelRatio(1);
+if (CONSOLE) document.body.classList.add('tv');
 let DEVICE_NAME = CONSOLE ? CONSOLE + (CONSOLE_DISC ? ' (DISC)' : '') : DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
 const TOUCH = { x: 0, y: 0 }; // phone joystick
 const myId = Math.random().toString(36).slice(2, 10);
@@ -1267,7 +1273,7 @@ function renderFrom(cam, target, showHead = false) { // draw the scene from the 
   camHide.forEach((m, i) => { m.visible = hv[i]; });
 }
 // the camcorder's little screen: 15 fps in VR (lighter on the Quest), 30 on a computer
-function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < (renderer.xr.isPresenting ? 1 / 15 : 1 / 30)) return; liv.feedT = 0; renderFrom(livCam, livRT);
+function renderLivFeed(dt) { liv.feedT += dt; if (liv.feedT < (LOWGFX && !camRec.rec ? 1 / 8 : renderer.xr.isPresenting ? 1 / 15 : 1 / 30)) return; liv.feedT = 0; renderFrom(livCam, livRT);
   if (camRec.rec && camRec.vr) { // VR video: copy the camcorder picture into the recording (flipped right way up)
     const W = livRT.width, H = livRT.height; renderer.readRenderTargetPixels(livRT, 0, 0, W, H, camRec.px);
     for (let y = 0; y < H; y++) camRec.img.data.set(camRec.px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4); camRec.ctx.putImageData(camRec.img, 0, 0); } }
@@ -2762,7 +2768,7 @@ ridge(405, -120, -20, 14, 0x1c1030, 2.2);
   const cv = document.createElement('canvas'); cv.width = cv.height = 512; const c = cv.getContext('2d');
   for (let i = 0; i < 260; i++) { const x = wRnd() * 512, y = wRnd() * 512, r = wr(20, 70), g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(190,140,200,0.18)'); g.addColorStop(1, 'rgba(190,140,200,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2); }
   const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(6, 6); tex.colorSpace = THREE.SRGBColorSpace;
-  for (const [y, op, sc] of [[-70, 0.9, 1], [-58, 0.55, 1.3]]) {
+  if (!LOWGFX) for (const [y, op, sc] of [[-70, 0.9, 1], [-58, 0.55, 1.3]]) {
     const m = new THREE.Mesh(new THREE.CircleGeometry(520, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: op, depthWrite: false, fog: false, color: 0xd9a6e0 }));
     m.rotation.x = -Math.PI / 2; m.position.y = y; m.scale.setScalar(sc); m.userData.sky = true; m.userData.drift = y; scene.add(m);
   }
@@ -2820,7 +2826,7 @@ function scatter(areas) { // areas: [x0, x1, z0, z1, groundY, density, flowerCha
   }
 }
 const inLobbyCross = (x, z) => (Math.abs(x) < 14.6 && Math.abs(z) < 10.6) || (Math.abs(x) < 10.6 && Math.abs(z) < 14.6);
-scatter([
+if (!LOWGFX) scatter([
   [-59, 59, -59, 59, 0, 0.3, 0.06, 0.2, inLobbyCross],   // the lobby fields
   [B3X - 11.5, B3X + 11.5, B3Z - 11.5, B3Z + 11.5, 0.5, 0.45, 0.1, 0.2, (x, z) => Math.hypot(x - B3X, z - B3Z + 1) < 3.2 || Math.hypot(x - B3X, z - B3Z + 1) < 6 && wRnd() < 0.7], // camp (not in the fire)
   [C2X - 4.7, C2X + 4.7, C2Z - 4.7, C2Z + 4.7, 0.5, 0.25, 0.15, 0.1],
@@ -2837,7 +2843,7 @@ const FLIES = [];
   fliesPts.frustumCulled = false; fliesPts.userData.flies = true; scene.add(fliesPts); FLIES.pts = fliesPts;
 }
 function updateWorldLife(dt, t) {
-  WIND.value = t;
+  WIND.value = t; if (LOWGFX) { FLIES.pts.visible = false; return; }
   const a = FLIES.pts.geometry.attributes.position;
   for (let i = 0; i < FLIES.length; i++) { const f = FLIES[i], k = t * f.sp + f.ph; a.setXYZ(i, f.x + Math.sin(k) * 0.8 + Math.sin(k * 2.3) * 0.2, f.y + Math.sin(k * 1.7) * 0.3, f.z + Math.cos(k * 0.9) * 0.8); }
   a.needsUpdate = true;
@@ -3519,7 +3525,7 @@ function updateWardrobe(dt, t) {
     if (renderer.xr.isPresenting) for (const h of hands) { if (!h.source) continue; const side = h.source.handedness === 'left' ? 0 : 1; kiosk.worldToLocal(me.tip(side, _wv)); if (Math.abs(_wv.z) < 0.06 && Math.abs(_wv.y) < 0.2 && Math.abs(_wv.x) < 0.85) { hot = Math.floor((_wv.x / 1.7 + 0.5) * 5); if (_wv.z < 0.025) kioskPress(hot); } }
     if (hot !== WARD.kioskHot) { WARD.kioskHot = hot; drawKiosk(); }
     // the mirror (only when you're in the shop)
-    WARD.mirrorT -= dt; if (WARD.mirrorT <= 0) { WARD.mirrorT = renderer.xr.isPresenting ? 1 / 15 : 1 / 24; // a smart mirror: it frames YOU wherever you stand
+    WARD.mirrorT -= dt; if (WARD.mirrorT <= 0) { WARD.mirrorT = LOWGFX ? 1 / 8 : renderer.xr.isPresenting ? 1 / 15 : 1 / 24; // a smart mirror: it frames YOU wherever you stand
       const hh = myPose.h; mirrorCam.position.set(WX, 1.9, WZ + 4.5); mirrorCam.lookAt(hh.x, hh.y - 0.3, hh.z); const md = mirrorCam.position.distanceTo(hh); mirrorCam.fov = Math.max(24, Math.min(62, 2 * Math.atan(1.3 / md) * 180 / Math.PI)); mirrorCam.updateProjectionMatrix();
       renderFrom(mirrorCam, mirrorRT, true); }
   }
@@ -3942,7 +3948,7 @@ function updateRoam(dt, t) {
 }
 
 // ================= COMPUTAH (names, room codes, colors, settings, save codes) =================
-const COMP_MENU = ['ROOM', 'NAME', 'COLOR', 'TURN', 'COMFORT', 'MIC', 'VOLUME', 'DARK CAM', 'SAVE CODE', 'STATS', 'CREDITS'];
+const COMP_MENU = ['ROOM', 'NAME', 'COLOR', 'TURN', 'COMFORT', 'GRAPHICS', 'MIC', 'VOLUME', 'DARK CAM', 'SAVE CODE', 'STATS', 'CREDITS'];
 const CP = { sel: 0, input: '', ch: 0, vch: 0, msg: '', msgT: 0, typing: false, hintT: 0, redrawT: 0, playT: 0, rgb: [5, 5, 5] };
 const cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 const rgbOf = hex => { const c = new THREE.Color(hex); return [Math.round(c.r * 9), Math.round(c.g * 9), Math.round(c.b * 9)]; };
@@ -4084,6 +4090,7 @@ function compOpt(menu, o) {
   if (menu === 'COLOR') { CP.ch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'TURN') { SET.turn = ['snap30', 'snap45', 'smooth'][o - 1]; saveSettings(); CP.msg = 'SAVED'; }
   if (menu === 'COMFORT') { SET.vignette = o - 1; saveSettings(); CP.msg = 'SAVED'; }
+  if (menu === 'GRAPHICS') { SET.gfx = ['auto', 'high', 'low'][o - 1]; saveSettings(); CP.msg = 'SAVED • RESTART THE GAME TO APPLY'; }
   if (menu === 'MIC') { SET.mic = ['open', 'ptt', 'off'][o - 1]; saveSettings(); applyMic(); CP.msg = 'SAVED'; }
   if (menu === 'VOLUME') { CP.vch = o - 1; CP.msg = 'NOW PRESS A NUMBER 0-9'; }
   if (menu === 'DARK CAM') { if (o === 1) livCycle(); if (o === 2) camZoom(5); if (o === 3) camZoom(-5); CP.msg = CAM_LABEL[liv.mode] + ' • ' + Math.round(camFov(liv.mode === 'boss' ? 'shoulder' : liv.mode)) + '°'; }
@@ -4106,6 +4113,7 @@ function drawComp() {
     c.fillStyle = '#' + new THREE.Color(hexOf(CP.rgb)).getHexString(); c.fillRect(x, y, 200, 90); c.strokeStyle = '#fff'; c.strokeRect(x, y, 200, 90); y += 130;
     line('PICK RED/GREEN/BLUE, PRESS 0-9, THEN ENTER', '#cbbcf0', 24);
   }
+  if (menu === 'GRAPHICS') { line('GRAPHICS: ' + (LOWGFX ? 'LOW (FAST)' : 'HIGH'), '#5ef2ff', 28); line('LOW: NO GRASS, SHADOWS OR TRAILS. GREAT FOR CONSOLES', '#cbbcf0', 22); choice([['auto', 'AUTO (LOW ON CONSOLES)'], ['high', 'HIGH'], ['low', 'LOW (FASTER)']], SET.gfx || 'auto'); }
   if (menu === 'COMFORT') { line('COMFORT VIGNETTE (VR)', '#5ef2ff', 28); line('DARKENS THE EDGES WHEN YOU FLY FAST', '#cbbcf0', 24); choice([[0, 'NO VIGNETTE'], [1, 'LIGHT'], [2, 'STRONG']], SET.vignette || 0); }
   if (menu === 'TURN') { line('HOW THE RIGHT STICK TURNS YOU', '#5ef2ff', 28); choice([['snap30', 'SNAP 30°'], ['snap45', 'SNAP 45°'], ['smooth', 'SMOOTH']], SET.turn); }
   if (menu === 'MIC') { line('VOICE CHAT', '#5ef2ff', 28); choice([['open', 'OPEN MIC (X = MUTE)'], ['ptt', 'PUSH TO TALK (HOLD X)'], ['off', 'MUTED']], SET.mic); }
@@ -4669,7 +4677,7 @@ for (const M of Object.values(CH_MAPS)) {
   for (const [mat, geos] of B2) scene.add(new THREE.Mesh(mergeGeometries(geos), mat));
   for (const o of M.isl) islandUnder(o.x, o.y - 0.6, o.z, o.w, o.d, Math.min(14, 3 + o.w * 0.5));
   pavement(M.arena[0], FY, M.arena[1], 22, 22, 'ring');
-  if (T.deco === 'gloom') scatter(M.isl.slice(0, -1).map(o => [o.x - o.w / 2 + 0.6, o.x + o.w / 2 - 0.6, o.z - o.d / 2 + 0.6, o.z + o.d / 2 - 0.6, o.y, 0.35, 0.15, 0.2]));
+  if (T.deco === 'gloom' && !LOWGFX) scatter(M.isl.slice(0, -1).map(o => [o.x - o.w / 2 + 0.6, o.x + o.w / 2 - 0.6, o.z - o.d / 2 + 0.6, o.z + o.d / 2 - 0.6, o.y, 0.35, 0.15, 0.2]));
   // home portal on the starting island, and a sign with the chapter name
   M.home = storyPortal(M.start.x - 4.5, 1.4, M.start.z + 4.5 * -T.dir, 'HOME', 'LEAVE THE CHAPTER', 0x5ef2ff); M.home.rotation.y = M.face;
   const lab = labelTex(null, 1024, 200); lab.draw(['CHAPTER ' + M.n, T.title, '#' + new THREE.Color(T.edge).getHexString()]);
@@ -5270,6 +5278,7 @@ function placeShadow(m, p, size) {
   m.visible = true; m.position.set(p.x, g + 0.015, p.z); m.scale.setScalar(size * (0.8 + Math.min(h, 4) * 0.12)); m.material.opacity = Math.max(0.12, 0.85 - h * 0.15);
 }
 function updateShadows() {
+  if (LOWGFX) { if (SHADOWS.me.visible) { SHADOWS.me.visible = SHADOWS.l.visible = SHADOWS.r.visible = false; for (const m of SHADOWS.others.values()) m.visible = false; } return; }
   const showMe = !SPECTATE && !INTRO.active;
   SHADOWS.me.visible = showMe; if (showMe) placeShadow(SHADOWS.me, myPose.h, 0.62);
   const handsOn = showMe && (renderer.xr.isPresenting || VRSIM || thirdPerson);
@@ -5306,6 +5315,7 @@ const TRAILS = HIN.map(() => {
 });
 const _tr = new THREE.Vector3(), _tc = new THREE.Vector3(), _tcam = new THREE.Vector3();
 function updateTrails(dt) {
+  if (LOWGFX) return;
   camera.getWorldPosition(_tcam);
   HIN.forEach((H, k) => {
     const T = TRAILS[k]; T.fade = H.active && H.speed > 3 ? 1 : T.fade * Math.exp(-6 * dt);
@@ -5545,7 +5555,7 @@ function updateGamepad(dt) {
 }
 // pick up a pad that was already plugged in before the page loaded
 for (const gp of navigator.getGamepads?.() || []) if (gp && PAD.idx < 0) { PAD.idx = gp.index; PAD.kind = padKind(gp.id); const el = document.getElementById('padhelp'); if (el) { el.innerHTML = padHelpHtml(PAD.kind); el.hidden = false; } }
-if (CONSOLE) setTimeout(() => toast(CONSOLE + (CONSOLE_DISC ? ' • DISC' : '') + ' DETECTED • PLAY WITH YOUR CONTROLLER', 3), 1500);
+if (CONSOLE) setTimeout(() => toast(CONSOLE + (CONSOLE_DISC ? ' • DISC' : '') + ' DETECTED • PLAY WITH YOUR CONTROLLER' + (LOWGFX ? ' • FAST GRAPHICS ON' : ''), 3.5), 1500);
 
 // ================= MUSIC (all original songs, played live by a tiny chiptune band: lead, arp, bass, drums) =================
 // each token is an eighth note: a note like c5 / f#4 / bb3, "-" holds the last note, "." is a rest. "|" is just for reading.
@@ -5658,7 +5668,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { PAD, updateGamepad: d => updateGamepad(d), updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { LOWGFX, PAD, updateGamepad: d => updateGamepad(d), updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
