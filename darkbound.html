@@ -2268,7 +2268,8 @@ const clTag = labelTex(null, 512, 128); clTag.draw(['CLAUDE', 'YOUR GUIDE', '#ff
 const clTagM = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.225), new THREE.MeshBasicMaterial({ map: clTag.tex, transparent: true })); scene.add(clTagM);
 const bubCv = document.createElement('canvas'); bubCv.width = 1024; bubCv.height = 384;
 const bubTex = new THREE.CanvasTexture(bubCv); bubTex.colorSpace = THREE.SRGBColorSpace;
-const bubM = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshBasicMaterial({ map: bubTex, transparent: true, depthWrite: false })); bubM.visible = false; scene.add(bubM);
+const bubM = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshBasicMaterial({ map: bubTex, transparent: true, depthWrite: false, depthTest: false, fog: false })); bubM.visible = false; bubM.renderOrder = 990; scene.add(bubM); // always drawn on top: bosses and bullets never cover it
+const _bubD = new THREE.Vector3();
 function drawBubble(text) {
   const c = bubCv.getContext('2d'); c.clearRect(0, 0, 1024, 384);
   const col = STORY.spkCol || '#ff9a5c';
@@ -2381,7 +2382,10 @@ function updateStory(dt, t) {
   claude.root.updateMatrixWorld(); claude.body.worldToLocal(_clLook.copy(confused.glanceT > 0 && !CL.lookAt ? confused.glance : lookP)).normalize(); // eyes wander off sometimes
   for (const p of claude.eyes) p.position.set(_clLook.x * 0.02, _clLook.y * 0.018, p.userData.z);
   clTagM.position.copy(claude.root.position); clTagM.position.y += 0.82; clTagM.lookAt(h);
-  const spk = STORY.spk || claude.root; bubM.position.copy(spk.position); bubM.position.y += STORY.spk ? STORY.spkH : 1.5; bubM.lookAt(h);
+  const spk = STORY.spk || claude.root;
+  if (B.def && B.phase !== 'dead') { camera.getWorldDirection(_bubD); _bubD.y = 0; if (_bubD.lengthSq() < 1e-4) _bubD.set(0, 0, -1); _bubD.normalize(); bubM.position.copy(h).addScaledVector(_bubD, 2.2); bubM.position.y = h.y - 0.55; bubM.scale.setScalar(0.6); } // in a fight: a text box right in front of you
+  else { bubM.position.copy(spk.position); bubM.position.y += STORY.spk ? STORY.spkH : 1.5; bubM.scale.setScalar(1); }
+  bubM.lookAt(h);
   // typing the current line
   if (STORY.cur) {
     if (STORY.shown < STORY.cur.length) {
@@ -4547,7 +4551,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
