@@ -4989,8 +4989,8 @@ function drawWeird(t) {
 }
 // the white fade + the real logo: a full-screen overlay on a PC/phone, panels on your face in VR
 const introEl = document.createElement('div');
-introEl.style.cssText = 'position:fixed;inset:0;z-index:30;background:#fff;opacity:0;pointer-events:none;display:flex;align-items:center;justify-content:center';
-introEl.innerHTML = '<img src="logo.png" alt="Darkbound" style="width:min(640px,80vw);opacity:0;border-radius:10px">';
+introEl.style.cssText = 'position:fixed;inset:0;z-index:30;background:#fff;opacity:0;pointer-events:none;transition:opacity .15s linear;display:flex;align-items:center;justify-content:center';
+introEl.innerHTML = '<img src="logo.png" alt="Darkbound" style="width:min(640px,80vw);opacity:0;border-radius:10px;transition:opacity .15s linear">';
 document.body.appendChild(introEl); const introImg = introEl.querySelector('img');
 const fadeVR = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthTest: false, fog: false }));
 fadeVR.position.z = -0.2; fadeVR.renderOrder = 2000; fadeVR.visible = false; camera.add(fadeVR); camHide.push(fadeVR);
@@ -5028,11 +5028,16 @@ function updateIntro(dt, t) {
   else if (INTRO.phase === 'logo') {
     setIntroFade(1, Math.min(1, INTRO.t / 0.4));
     if (INTRO.t >= 0.4 + 2.9) { // BOOM
-      INTRO.phase = 'out'; INTRO.t = 0; sfx(70, 25, 1.4, 'sawtooth', 0.5); sfx(45, 20, 1.6, 'sine', 0.6); slapSound && actx && slapSound(1, true);
+      INTRO.phase = 'hold'; INTRO.t = 0; INTRO.frames = 0; sfx(70, 25, 1.4, 'sawtooth', 0.5); sfx(45, 20, 1.6, 'sine', 0.6); slapSound && actx && slapSound(1, true);
       for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 500);
       setLightWorld(false); teleport(SPAWN.x, SPAWN.y, SPAWN.z, 0);
+      try { renderer.compile(scene, camera); } catch (e) { } // get every material ready while the screen is still white (no stutter later)
     }
-  } else if (INTRO.phase === 'out') { const k = Math.max(0, 1 - INTRO.t / 0.7); setIntroFade(k, k); if (k <= 0) { INTRO.active = false; setIntroFade(0, 0); } }
+  } else if (INTRO.phase === 'hold') { setIntroFade(1, 1); if (++INTRO.frames >= 4 && INTRO.t > 0.25) { INTRO.phase = 'out'; INTRO.t0 = performance.now(); } } // let the lobby draw a few frames behind the white
+  else if (INTRO.phase === 'out') { // fade on the real clock, so a slow frame can't make it jump
+    const u = Math.min(1, (performance.now() - INTRO.t0) / 1300), k = 1 - u * u * (3 - 2 * u), logoK = Math.max(0, 1 - u * 2.2);
+    setIntroFade(k, logoK); if (u >= 1) { INTRO.active = false; setIntroFade(0, 0); }
+  }
 }
 
 window.__boss = { freeCos, WARD, COS, COSMETICS, LOOK, applyLook, cosTouch, kioskPress, fillWardrobe, makeGorilla, questAdd, Q, puff, makeSaveCode, btGraze, pathStep, OPEN_EDGE, me, kb, kbKeys, hands, updateComp, BOSSES, renderer, INTRO, updateIntro, monShop, addXP, updateGrab, GRAB, SB, startBossChapter, BOTS, updateBots, updateGM, GM, gmStart, gmLocal, longarm, makeSaveCode, loadSaveCode, CP, compKey, tapAt, SET, btRoot, updateBattle, updateRoam, btChoose, btSlap, BT, startBattle, ROAM, addBananas, startCamp, B3, startC2, C2, startStory, STORY, teleport, claude,  B, P, peds, trySummon, startBoss, setPhase, damageBoss, livCycle, liv, livObj, skyEye, rig, myPose }; // for testing from the console
