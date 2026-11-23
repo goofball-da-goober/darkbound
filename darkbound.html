@@ -43,6 +43,7 @@
   <div class="top"><span class="t">DARKBOUND</span><span id="ver"></span><span class="room"><span id="net">connecting…</span></span><span class="tab">TAB</span></div>
   <div class="body">
     <div class="keys"><kbd>WASD</kbd><span>move</span><kbd>SPACE</kbd><span>jump</span><kbd>SHIFT</kbd><span>run</span><kbd>E</kbd><span>use / slap</span><kbd>C</kbd><span>body view</span><kbd>R</kbd><span>respawn</span><kbd>V</kbd><span>Dark Cam</span><kbd>T</kbd><span>type (COMPUTAH)</span></div>
+    <p id="padhelp" hidden></p>
     <p>In VR: slap the ground to move and fling your arms to jump. Right stick turns, X mutes, click a stick to hold the Dark Cam.</p>
     <dl><dt>Rift fountain</dt><dd>the story, with Claude</dd><dt>Arena</dt><dd>fan bosses (south-east)</dd><dt>Portal</dt><dd>Darkwood, Horror, BTM (west)</dd><dt>COMPUTAH</dt><dd>name, rooms, settings (east)</dd><dt>Wardrobe</dt><dd>cosmetics + mirror (south-west)</dd><dt>Shops</dt><dd>daily picks + monsters (south)</dd><dt>Quests</dt><dd>new every day (north-east)</dd><dt>Playground</dt><dd>toys, hoop, drums (north-east)</dd><dt>VIG</dt><dd>gold portal (east)</dd></dl>
   </div>
@@ -722,8 +723,9 @@ const saveSettings = () => { try { localStorage.setItem('darkbound-settings', JS
 let MY_COLOR = SET.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)];
 // what are you playing on? (VR headset, computer, phone or tablet)
 const UA = navigator.userAgent;
-let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
-let DEVICE_NAME = DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
+const CONSOLE = /Xbox/i.test(UA) ? 'XBOX' : /PlayStation/i.test(UA) ? 'PLAYSTATION' : '';
+let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : CONSOLE ? 'pc' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
+let DEVICE_NAME = CONSOLE ? CONSOLE : DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
 const TOUCH = { x: 0, y: 0 }; // phone joystick
 const myId = Math.random().toString(36).slice(2, 10);
 const net = { peer: null, isHost: false, conns: new Map(), hostConn: null, status: 'connecting…' };
@@ -2008,7 +2010,7 @@ function bfire(e) {
 }
 function hurtMe(fromP) {
   if (P.inv > 0 || B.phase === 'dead') return;
-  P.inv = 1; P.hp -= B.def?.story ? 5 : 3; P.flash = 0.4;
+  P.inv = 1; P.hp -= B.def?.story ? 5 : 3; P.flash = 0.4; rumble(0.9, 180);
   sfx(420, 90, 0.25, 'sawtooth', 0.28);
   for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 140);
   _bw.copy(myPose.h).sub(fromP); _bw.y = 0; if (_bw.lengthSq() > 1e-6) vel.addScaledVector(_bw.normalize(), 2.5); vel.y += 1.5; // knocked back
@@ -3833,7 +3835,7 @@ function btFire(e) {
 }
 function clearBtLasers() { for (const l of BT.lasers) { btBox.remove(l.m); l.m.material.dispose(); } BT.lasers = []; }
 function btHurt() {
-  if (BT.inv > 0) return; BT.inv = 1; BT.hp = Math.max(0, BT.hp - BT.def.dmg); drawBtBottom();
+  if (BT.inv > 0) return; BT.inv = 1; BT.hp = Math.max(0, BT.hp - BT.def.dmg); drawBtBottom(); rumble(0.7, 140);
   sfx(420, 90, 0.2, 'sawtooth', 0.25); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 120);
   if (BT.hp <= 0) { BT.phase = 'lost'; BT.bullets = []; clearBtLasers(); btSpark.visible = false; btSay(['Ouch! You got bonked out of the battle.'], () => endBattle('lose')); }
 }
@@ -5288,7 +5290,7 @@ function updateMushrooms(dt) {
   for (const m of MUSH) {
     m.cd -= dt; m.squash = Math.max(0, m.squash - dt * 3); const s = Math.sin(m.squash * Math.PI) * 0.3; m.g.scale.set(1 + s, 1 - s, 1 + s);
     if (m.cd <= 0 && Math.hypot(h.x - m.x, h.z - m.z) < m.r && h.y > m.top && h.y - m.top < 1.0 && vel.y < 0.6) {
-      vel.y = 10.5; m.squash = 1; m.cd = 0.5; grounded = false; toneAt(_soc.set(m.x, m.top, m.z), 140, 520, 0.35, 'sine', 0.4); puff(_soc, 1); questAdd('bounce');
+      vel.y = 10.5; m.squash = 1; m.cd = 0.5; grounded = false; rumble(0.5, 120); toneAt(_soc.set(m.x, m.top, m.z), 140, 520, 0.35, 'sine', 0.4); puff(_soc, 1); questAdd('bounce');
       for (const H of HIN) buzz(H, 0.6, 80);
     }
   }
@@ -5511,6 +5513,39 @@ addEventListener('keydown', e => { // PC / phone ACT near the VIG button, skins,
   let best = null, bd = 1.3; for (const d of DRUMS) { const dd = Math.hypot(h.x - d.pos.x, h.z - d.pos.z); if (dd < bd) { bd = dd; best = () => playDrum(d, 0.8, true); } } MARIMBA.forEach((b, i) => { const dd = Math.hypot(h.x - b.pos.x, h.z - b.pos.z); if (dd < bd) { bd = dd; best = () => playBar(i, 0.8, true); } }); if (best) best();
 });
 
+// ================= CONTROLLERS: Xbox + PlayStation pads (PC, phone, and the Xbox's Edge browser) =================
+// left stick moves, right stick looks; buttons press the same keys a keyboard would, so everything in the game works
+const PAD = { idx: -1, kind: '', prev: [], last: 0, moved: false };
+const PAD_KEYS = { 0: 'Space', 1: 'KeyC', 2: 'KeyE', 3: 'KeyV', 4: 'KeyG', 5: 'KeyP', 6: 'ShiftLeft', 7: 'KeyE', 8: 'Tab', 9: 'KeyT', 10: 'KeyR', 11: 'KeyK', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
+const padKind = id => /054c|playstation|dualsense|dualshock|wireless controller/i.test(id) ? 'ps' : 'xbox';
+const BTN = { xbox: { a: 'Ⓐ', b: 'Ⓑ', x: 'Ⓧ', y: 'Ⓨ', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', menu: '☰', view: '⧉', name: 'XBOX CONTROLLER' }, ps: { a: '✕', b: '○', x: '□', y: '△', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2', menu: 'OPTIONS', view: 'CREATE', name: 'PLAYSTATION CONTROLLER' } };
+function padKey(code, down) { dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, key: code === 'Space' ? ' ' : code === 'Enter' ? 'Enter' : code === 'Escape' ? 'Escape' : '' })); }
+function padCode(i) { // what a button means right now (typing on the COMPUTAH and battles use the pad a little differently)
+  if (CP.typing) return { 0: 'Enter', 1: 'Escape', 4: 'Comma', 5: 'Period', 3: 'Slash', 12: 'ArrowUp', 13: 'ArrowDown' }[i] || null;
+  if (BT.active && i >= 12) return { 12: 'Digit1', 15: 'Digit2', 13: 'Digit3', 14: 'Digit4' }[i];
+  return PAD_KEYS[i] || null;
+}
+function rumble(strength = 0.6, ms = 120) { const gp = PAD.idx >= 0 ? navigator.getGamepads?.()[PAD.idx] : null; try { gp?.vibrationActuator?.playEffect?.('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 }); } catch (e) { } }
+function padHelpHtml(k) { const b = BTN[k]; return `<b>${b.name}:</b> left stick move • right stick look • ${b.a} jump • ${b.x} / ${b.rt} use, slap, grab • ${b.lt} run • ${b.y} Dark Cam • ${b.b} body view • ${b.lb} cam mode • ${b.rb} photo • ${b.menu} type on the COMPUTAH • ${b.view} help • left stick click: respawn`; }
+addEventListener('gamepadconnected', e => { if (renderer.xr.isPresenting) return; PAD.idx = e.gamepad.index; PAD.kind = padKind(e.gamepad.id); PAD.prev = []; const b = BTN[PAD.kind]; toast(b.name + ' CONNECTED • ' + b.a + ' JUMP • ' + b.x + ' USE • RIGHT STICK LOOKS', 3.5); rumble(0.5, 150); const el = document.getElementById('padhelp'); if (el) { el.innerHTML = padHelpHtml(PAD.kind); el.hidden = false; } });
+addEventListener('gamepaddisconnected', e => { if (e.gamepad.index !== PAD.idx) return; PAD.idx = -1; TOUCH.x = TOUCH.y = 0; for (const c of Object.values(PAD_KEYS)) keys[c] = false; toast('CONTROLLER DISCONNECTED'); });
+function updateGamepad(dt) {
+  if (renderer.xr.isPresenting || PAD.idx < 0) return;
+  const gp = navigator.getGamepads?.()[PAD.idx]; if (!gp || !gp.connected) return;
+  const dz = v => Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82;
+  const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
+  if (lx || ly || PAD.moved) { TOUCH.x = lx; TOUCH.y = ly; PAD.moved = !!(lx || ly); } // the same input the phone joystick uses (walking + dodging in battles)
+  if (!BT.active) { yaw -= rx * 2.7 * dt; pitch = Math.max(-1.4, Math.min(1.4, pitch - ry * 2.0 * dt)); }
+  gp.buttons.forEach((btn, i) => {
+    const down = btn.pressed || btn.value > 0.5, was = !!PAD.prev[i]; PAD.prev[i] = down; if (down === was) return;
+    if (down) { ensureAudio(); const code = padCode(i); if (code) { PAD.held = PAD.held || {}; PAD.held[i] = code; padKey(code, true); } }
+    else if (PAD.held?.[i]) { padKey(PAD.held[i], false); delete PAD.held[i]; }
+  });
+}
+// pick up a pad that was already plugged in before the page loaded
+for (const gp of navigator.getGamepads?.() || []) if (gp && PAD.idx < 0) { PAD.idx = gp.index; PAD.kind = padKind(gp.id); const el = document.getElementById('padhelp'); if (el) { el.innerHTML = padHelpHtml(PAD.kind); el.hidden = false; } }
+if (CONSOLE) setTimeout(() => toast(CONSOLE + ' DETECTED • PLAY WITH YOUR CONTROLLER', 3), 1500);
+
 // ================= MUSIC (all original songs, played live by a tiny chiptune band: lead, arp, bass, drums) =================
 // each token is an eighth note: a note like c5 / f#4 / bb3, "-" holds the last note, "." is a rest. "|" is just for reading.
 const SONGS = {
@@ -5622,7 +5657,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { PAD, updateGamepad: d => updateGamepad(d), updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
@@ -5727,7 +5762,7 @@ renderer.setAnimationLoop(() => {
   for (let i = 0; i < PN; i++) { let y = pPos[i * 3 + 1] + dt * (1.5 + (i % 7) * 0.3); if (y > 30) y -= 30; pPos[i * 3 + 1] = y; }
   pGeo.attributes.position.needsUpdate = true;
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.position.y += Math.sin(t * 0.4 + m.userData.bob) * 0.15 * dt; }
-  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t); updateAllies(dt, t); updateVRPlay(dt, t); updateVIG(dt, t);
+  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t); updateAllies(dt, t); updateVRPlay(dt, t); updateVIG(dt, t); updateGamepad(dt);
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
   if (SPECTATE) renderSpectator(t);
