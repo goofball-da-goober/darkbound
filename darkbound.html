@@ -723,9 +723,10 @@ const saveSettings = () => { try { localStorage.setItem('darkbound-settings', JS
 let MY_COLOR = SET.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)];
 // what are you playing on? (VR headset, computer, phone or tablet)
 const UA = navigator.userAgent;
-const CONSOLE = /Xbox/i.test(UA) ? 'XBOX' : /PlayStation/i.test(UA) ? 'PLAYSTATION' : '';
+const CONSOLE = /Xbox Series S/i.test(UA) ? 'XBOX SERIES S' : /PlayStation 6|PS6/i.test(UA) ? 'PS6' : /Xbox/i.test(UA) ? 'XBOX' : /PlayStation/i.test(UA) ? 'PLAYSTATION' : '';
+const CONSOLE_DISC = CONSOLE === 'XBOX SERIES S' || CONSOLE === 'PS6'; // these two show DISC
 let DEVICE = /OculusBrowser|Quest|Pico/i.test(UA) ? 'vr' : CONSOLE ? 'pc' : (matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(UA)) ? 'mobile' : 'pc';
-let DEVICE_NAME = CONSOLE ? CONSOLE : DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
+let DEVICE_NAME = CONSOLE ? CONSOLE + (CONSOLE_DISC ? ' (DISC)' : '') : DEVICE === 'vr' ? 'VR HEADSET' : DEVICE === 'mobile' ? (/iPad|Tablet/i.test(UA) || Math.min(screen.width, screen.height) > 700 ? 'TABLET' : 'PHONE') : 'COMPUTER';
 const TOUCH = { x: 0, y: 0 }; // phone joystick
 const myId = Math.random().toString(36).slice(2, 10);
 const net = { peer: null, isHost: false, conns: new Map(), hostConn: null, status: 'connecting…' };
@@ -5544,7 +5545,7 @@ function updateGamepad(dt) {
 }
 // pick up a pad that was already plugged in before the page loaded
 for (const gp of navigator.getGamepads?.() || []) if (gp && PAD.idx < 0) { PAD.idx = gp.index; PAD.kind = padKind(gp.id); const el = document.getElementById('padhelp'); if (el) { el.innerHTML = padHelpHtml(PAD.kind); el.hidden = false; } }
-if (CONSOLE) setTimeout(() => toast(CONSOLE + ' DETECTED • PLAY WITH YOUR CONTROLLER', 3), 1500);
+if (CONSOLE) setTimeout(() => toast(CONSOLE + (CONSOLE_DISC ? ' • DISC' : '') + ' DETECTED • PLAY WITH YOUR CONTROLLER', 3), 1500);
 
 // ================= MUSIC (all original songs, played live by a tiny chiptune band: lead, arp, bass, drums) =================
 // each token is an eighth note: a note like c5 / f#4 / bb3, "-" holds the last note, "." is a rest. "|" is just for reading.
