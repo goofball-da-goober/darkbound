@@ -47,7 +47,7 @@
     <div class="keys"><kbd>WASD</kbd><span>move</span><kbd>SPACE</kbd><span>jump</span><kbd>SHIFT</kbd><span>run</span><kbd>E</kbd><span>use / slap</span><kbd>C</kbd><span>body view</span><kbd>R</kbd><span>respawn</span><kbd>V</kbd><span>Dark Cam</span><kbd>T</kbd><span>type (COMPUTAH)</span></div>
     <p id="padhelp" hidden></p>
     <p>In VR: slap the ground to move and fling your arms to jump. Right stick turns, X mutes, click a stick to hold the Dark Cam.</p>
-    <dl><dt>Rift fountain</dt><dd>the story, with Claude</dd><dt>Arena</dt><dd>fan bosses (south-east)</dd><dt>Portal</dt><dd>Darkwood, Horror, BTM (west)</dd><dt>COMPUTAH</dt><dd>name, rooms, settings (east)</dd><dt>Wardrobe</dt><dd>cosmetics + mirror (south-west)</dd><dt>Shops</dt><dd>daily picks + monsters (south)</dd><dt>Quests</dt><dd>new every day (north-east)</dd><dt>Playground</dt><dd>toys, hoop, drums (north-east)</dd><dt>VIG</dt><dd>gold portal (east)</dd></dl>
+    <dl><dt>Rift fountain</dt><dd>the story, with Claude</dd><dt>Arena</dt><dd>fan bosses (south-east)</dd><dt>Portal</dt><dd>Darkwood, Horror, BTM (west)</dd><dt>COMPUTAH</dt><dd>name, rooms, settings (east)</dd><dt>Wardrobe</dt><dd>cosmetics + mirror (south-west)</dd><dt>Shops</dt><dd>daily picks + monsters (south)</dd><dt>Quests</dt><dd>new every day (north-east)</dd><dt>Playground</dt><dd>toys, hoop, drums (north-east)</dd><dt>VIG</dt><dd>gold portal (east)</dd><dt>Theater</dt><dd>coming soon (north-west)</dd></dl>
   </div>
 </div>
 <script type="module">
@@ -238,7 +238,7 @@ function tree(x, z) {
   }
 }
 {
-  const avoid = [[14, 38, -40, -16], [-33, -27, -35, -29], [-43, -37, 35, 41], [43, 49, -45, -39], [45, 51, 15, 21], [-15, -9, 43, 49], [-33, -11, 15, 33], [-8, 8, -38, -20], [19, 45, -13, 13], [-7, 7, 14, 55], [-48, -16, -16, 16], [-16, 16, -16, 16], [18, 42, 20, 44]];
+  const avoid = [[-44, -28, -30, -18], [14, 38, -40, -16], [-33, -27, -35, -29], [-43, -37, 35, 41], [43, 49, -45, -39], [45, 51, 15, 21], [-15, -9, 43, 49], [-33, -11, 15, 33], [-8, 8, -38, -20], [19, 45, -13, 13], [-7, 7, 14, 55], [-48, -16, -16, 16], [-16, 16, -16, 16], [18, 42, 20, 44]];
   const placed = [];
   for (let tries = 0; placed.length < 22 && tries < 600; tries++) {
     const x = rr(-54, 54), z = rr(-54, 54);
@@ -408,6 +408,12 @@ addBox(PGX + 6.5, 0.12, PGZ - 2, 0.9, 0.32, 0.6, COL.trunk, EDGE.gold);         
 // --- BOUNCE MUSHROOMS out in the fields ---
 const MUSH_SPOTS = [[-30, -32], [-40, 38], [46, -42], [48, 18], [-12, 46]];
 for (const [x, z] of MUSH_SPOTS) { addBox(x, 0, z, 0.7, 1.2, 0.7, 0xe8dcff, EDGE.violet); addBox(x, 1.2, z, 2.6, 0.5, 2.6, 0xc2364f, EDGE.pink); }
+// --- COMING SOON THEATER (north-west fields): a sneak peek at the rework ---
+const TX = -36, TZ = -24;
+addBox(TX, 0, TZ, 12, 0.15, 9, COL.stoneHi, EDGE.pink);                                         // floor
+addBox(TX - 5.8, 0.15, TZ, 0.4, 4.8, 9, COL.wall, EDGE.violet);                                  // the screen wall (west)
+for (const sd of [-1, 1]) addBox(TX, 0.15, TZ + sd * 4.3, 12, 3.4, 0.4, COL.wall, EDGE.violet);  // side walls
+for (let r = 0; r < 3; r++) addBox(TX + 0.4 + r * 1.9, 0.15, TZ, 0.7, 0.4 + r * 0.25, 6, COL.trunk, EDGE.pink); // benches rising to the back
 // --- THE CHAPTER ROOM: where you go after the whole story is done (replay any chapter) ---
 const CRX = 330, CRZ = 0;
 addBox(CRX, -0.5, CRZ, 18, 0.5, 18, COL.stoneHi, EDGE.violet);                                                  // floor
@@ -2831,7 +2837,7 @@ if (!LOWGFX) scatter([
   [B3X - 11.5, B3X + 11.5, B3Z - 11.5, B3Z + 11.5, 0.5, 0.45, 0.1, 0.2, (x, z) => Math.hypot(x - B3X, z - B3Z + 1) < 3.2 || Math.hypot(x - B3X, z - B3Z + 1) < 6 && wRnd() < 0.7], // camp (not in the fire)
   [C2X - 4.7, C2X + 4.7, C2Z - 4.7, C2Z + 4.7, 0.5, 0.25, 0.15, 0.1],
   [SX - 4.5, SX + 4.5, SZ - 31 - 6.5, SZ - 31 + 4.5, PLAT_Y, 0.25, 0.2, 0.2],
-  [LX - 8.5, LX + 8.5, LZ - 8.5, LZ + 8.5, 0, 0.12, 0.35, 0],
+  [LX - 8.5, LX + 8.5, LZ - 8.5, LZ + 8.5, 0, 0.12, 0.35, 0, (x, z) => (Math.abs(z - (LZ + 1.6)) < 1.2 && Math.abs(x - LX) < 4.6) || Math.hypot(x - LX, z - (LZ + 5)) < 1.6], // keep the mode pads + spawn clear
 ]);
 // ---- fireflies (lobby, camp, the Hollow) ----
 const FLIES = [];
@@ -3948,7 +3954,7 @@ function updateRoam(dt, t) {
 }
 
 // ================= COMPUTAH (names, room codes, colors, settings, save codes) =================
-const COMP_MENU = ['ROOM', 'NAME', 'COLOR', 'TURN', 'COMFORT', 'GRAPHICS', 'MIC', 'VOLUME', 'DARK CAM', 'SAVE CODE', 'STATS', 'CREDITS'];
+const COMP_MENU = ['ROOM', 'NAME', 'AGE MODE', 'COLOR', 'TURN', 'COMFORT', 'GRAPHICS', 'MIC', 'VOLUME', 'DARK CAM', 'SAVE CODE', 'STATS', 'CREDITS'];
 const CP = { sel: 0, input: '', ch: 0, vch: 0, msg: '', msgT: 0, typing: false, hintT: 0, redrawT: 0, playT: 0, rgb: [5, 5, 5] };
 const cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 const rgbOf = hex => { const c = new THREE.Color(hex); return [Math.round(c.r * 9), Math.round(c.g * 9), Math.round(c.b * 9)]; };
@@ -4066,6 +4072,7 @@ function compKey(k) {
   else if (k === 'ENTER') compEnter(menu);
   else if (k.startsWith('OPT')) compOpt(menu, +k[3]);
   else if (menu === 'COLOR' && /[0-9]/.test(k)) { CP.rgb[CP.ch] = +k; me.setColor(hexOf(CP.rgb)); CP.msg = 'PRESS ENTER TO SAVE THIS COLOR'; }
+  else if (menu === 'AGE MODE') { const n = '1234'.indexOf(k); if (n >= 0) { chooseAge(AGE_MODES[n]); CP.msg = 'MODE SAVED: ' + AGE_MODES[n]; } }
   else if (menu === 'DARK CAM') {
     if (/[0-9]/.test(k)) { camSmooth(+k); CP.msg = 'SMOOTHING ' + k; }
     else if ('ABC'.includes(k)) camSpot('ABC'.indexOf(k), false);
@@ -4107,6 +4114,7 @@ function drawComp() {
   const field = label => { line(label, '#cbbcf0', 26); c.fillStyle = '#1b1232'; c.fillRect(x, y - 18, 640, 56); c.strokeStyle = '#ffd447'; c.strokeRect(x, y - 18, 640, 56); c.fillStyle = '#ffd447'; c.font = '38px "Lilita One", system-ui, sans-serif'; c.fillText(CP.input + (Math.floor(performance.now() / 500) % 2 ? '_' : ''), x + 14, y + 10); y += 70; };
   const choice = (opts, cur) => opts.forEach(([k, label], i) => line('OPT ' + (i + 1) + ': ' + label + (k === cur ? '  <<' : ''), k === cur ? '#6dff9a' : '#ffffff', 28));
   if (menu === 'ROOM') { line('YOU ARE IN: ' + roomTag(), '#5ef2ff'); line('PLAYERS HERE: ' + (remotes.size + 1) + '   ' + net.status.toUpperCase(), '#cbbcf0', 24); field('TYPE A ROOM CODE, THEN ENTER:'); line('OPT 1: JOIN A PUBLIC ROOM', '#ffffff', 26); line('OPT 2: MAKE A RANDOM CODE', '#ffffff', 26); line('SHARE THE CODE WITH FRIENDS!', '#6dff9a', 24); }
+  if (menu === 'AGE MODE') { line('YOUR MODE: ' + (SET.age || 'NOT PICKED YET'), '#5ef2ff', 34); line('PRESS 1: 0-9    2: 9-12    3: 12-16    4: 17+', '#ffffff', 28); line('YOUR MODE CHANGES THE WARNINGS YOU SEE', '#cbbcf0', 24); line('(LIKE BEFORE JOINING VIG)', '#cbbcf0', 24); }
   if (menu === 'NAME') { line('YOUR NAME: ' + (SET.name || '(NONE)'), '#5ef2ff'); line('EVERYONE SEES IT OVER YOUR HEAD', '#cbbcf0', 24); field('TYPE A NAME (A-Z, 0-9), THEN ENTER:'); line('OPT 1: CLEAR MY NAME', '#ffffff', 26); }
   if (menu === 'COLOR') {
     ['RED', 'GREEN', 'BLUE'].forEach((n, i) => { const on = CP.ch === i; c.fillStyle = on ? '#ffd447' : '#ffffff'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText('OPT ' + (i + 1) + ' ' + n, x, y); for (let k = 0; k < 10; k++) { c.fillStyle = k <= CP.rgb[i] ? ['#ff3b3b', '#3bff6a', '#3b7bff'][i] : '#2a1640'; c.fillRect(x + 290 + k * 30, y - 16, 24, 32); } c.fillStyle = '#fff'; c.fillText(String(CP.rgb[i]), x + 600, y); y += 58; });
@@ -4953,6 +4961,22 @@ part(weird, new THREE.BoxGeometry(0.95, 0.8, 0.75), toon(0x2a2833, 0.05), [0, 0.
 const wCv = document.createElement('canvas'); wCv.width = 160; wCv.height = 120; const wTex = new THREE.CanvasTexture(wCv); wTex.magFilter = THREE.NearestFilter;
 const wScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.56), new THREE.MeshBasicMaterial({ map: wTex })); wScreen.position.set(0, 0.42, 0.38); weird.add(wScreen);
 const wGlow = new THREE.Mesh(S(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })); wGlow.position.set(0, 0.42, 0.2); weird.add(wGlow);
+const AGE_MODES = ['0-9', '9-12', '12-16', '17+'], AGE_COL = ['#6dff9a', '#5ef2ff', '#ffd447', '#ff7ab8'];
+const agePads = AGE_MODES.map((m, i) => {
+  const x = LX - 3 + i * 2, z = LZ + 1.6, col = new THREE.Color(AGE_COL[i]);
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.06, 28), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5 })); pad.position.set(x, 0.03, z); scene.add(pad);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 6, 32), new THREE.MeshBasicMaterial({ color: col })); ring.rotation.x = Math.PI / 2; ring.position.set(x, 0.07, z); scene.add(ring);
+  const lab = labelTex(null, 512, 160); const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.41), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); sign.position.set(x, 1.55, z - 0.3); scene.add(sign);
+  const P = { m, x, z, pad, ring, sign, lab, col: AGE_COL[i] }; pad.userData.poke = sign.userData.poke = () => chooseAge(m); return P;
+});
+{ const lab = labelTex(null, 1024, 200); const c = lab.cv.getContext('2d'); c.clearRect(0, 0, 1024, 200); c.fillStyle = 'rgba(255,255,255,0.92)'; c.beginPath(); c.roundRect(6, 6, 1012, 188, 30); c.fill(); c.strokeStyle = '#b98cff'; c.lineWidth = 8; c.stroke(); c.textAlign = 'center'; c.fillStyle = '#7a5cff'; c.font = '84px "Lilita One", system-ui, sans-serif'; c.fillText('CHOOSE YOUR MODE', 512, 100); c.fillStyle = '#ff7ab8'; c.font = '36px "Lilita One", system-ui, sans-serif'; c.fillText('HOW OLD ARE YOU? STEP ON A PAD (PC: PRESS 1-4)', 512, 160); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 0.9), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true })); m.position.set(LX, 2.55, LZ + 1.2); scene.add(m); }
+function drawAgePads() {
+  for (const P of agePads) { const on = SET.age === P.m, c = P.lab.cv.getContext('2d'); c.clearRect(0, 0, 512, 160); c.fillStyle = on ? P.col : 'rgba(255,255,255,0.92)'; c.beginPath(); c.roundRect(6, 6, 500, 148, 24); c.fill(); c.strokeStyle = P.col; c.lineWidth = 8; c.stroke(); c.textAlign = 'center'; c.fillStyle = on ? '#1a0b2e' : '#4a3a6a'; c.font = '72px "Lilita One", system-ui, sans-serif'; c.fillText(P.m, 256, 84); c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText(on ? '✓ YOUR MODE' : 'STEP HERE', 256, 132); P.lab.tex.needsUpdate = true; P.pad.material.opacity = on ? 0.95 : 0.5; }
+}
+function chooseAge(m) { if (!AGE_MODES.includes(m) || SET.age === m) return; SET.age = m; saveSettings(); drawAgePads(); if (typeof drawComp === 'function') drawComp(); toast('MODE: ' + m + (INTRO.active ? ' • NOW JUMP INTO THE WEIRD COMPUTER' : ''), 2.6); sfx(660, 1320, 0.2, 'triangle', 0.14); }
+drawAgePads();
+addEventListener('keydown', e => { if (!INTRO.active || INTRO.phase !== 'play' || VRSIM) return; const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (n >= 0) chooseAge(AGE_MODES[n]); });
 const WEIRD_MSG = ['JUMP IN', 'COME CLOSER', '?', 'IT IS DARK IN HERE', 'JUMP IN'];
 function drawWeird(t) {
   const c = wCv.getContext('2d'), img = c.createImageData(160, 120);
@@ -4995,7 +5019,9 @@ function updateIntro(dt, t) {
     wScreen.getWorldPosition(_gw);
     const d = Math.min(myPose.h.distanceTo(_gw), myPose.l.distanceTo(_gw) + 0.3, myPose.r.distanceTo(_gw) + 0.3);
     if (d < 3 && (INTRO.humT -= dt) <= 0) { INTRO.humT = 0.6; sfx(55 + Math.random() * 10, 50, 0.6, 'sawtooth', 0.04 * (1 - d / 3)); }
-    if (d < 0.8) { INTRO.phase = 'fade'; INTRO.t = 0; sfx(200, 1400, 1.0, 'sine', 0.2); sfx(60, 30, 1.2, 'sawtooth', 0.12); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.6, 400); }
+    for (const P of agePads) { P.ring.scale.setScalar(1 + Math.sin(t * 3 + P.x) * 0.04); if (Math.hypot(myPose.h.x - P.x, myPose.h.z - P.z) < 0.75 || (renderer.xr.isPresenting && hands.some(h => h.source && Math.hypot(h.last.x - P.x, h.last.z - P.z) < 0.7 && h.last.y < 0.4))) chooseAge(P.m); }
+    if (d < 0.8 && !SET.age) { if ((INTRO.ageT = (INTRO.ageT || 0) - dt) <= 0) { INTRO.ageT = 3; toast('CHOOSE YOUR MODE FIRST: STEP ON A GLOWING PAD'); } }
+    else if (d < 0.8) { INTRO.phase = 'fade'; INTRO.t = 0; sfx(200, 1400, 1.0, 'sine', 0.2); sfx(60, 30, 1.2, 'sawtooth', 0.12); for (const h of hands) h.source?.gamepad?.hapticActuators?.[0]?.pulse?.(0.6, 400); }
   } else if (INTRO.phase === 'fade') { setIntroFade(Math.min(1, INTRO.t / 1.0), 0); if (INTRO.t >= 1.0) { INTRO.phase = 'logo'; INTRO.t = 0; } }
   else if (INTRO.phase === 'logo') {
     setIntroFade(1, Math.min(1, INTRO.t / 0.4));
@@ -5422,12 +5448,20 @@ part(vigBtn, new THREE.CylinderGeometry(0.32, 0.38, 0.95, 16), toon(0x2a1a3a, 0.
 const vigKnob = part(vigBtn, new THREE.CylinderGeometry(0.22, 0.22, 0.08, 20), new THREE.MeshBasicMaterial({ color: 0xffd447 }), [0, 0.99, 0], null, 0.006);
 const vigCard = (() => { const lab = { cv: document.createElement('canvas') }; lab.cv.width = 768; lab.cv.height = 512; lab.tex = new THREE.CanvasTexture(lab.cv); lab.tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, side: THREE.DoubleSide })); m.position.set(11.4, 1.95, 4.4); m.rotation.y = -Math.PI / 2 - 0.5; scene.add(m); lab.m = m; return lab; })();
-function drawVigCard() {
+const AGE_WARN = {
+  '0-9': ['ASK A GROWN-UP FIRST!', 'VIG WILL COST REAL MONEY LATER', '($4.59 A MONTH). ONLY JOIN IF', 'A GROWN-UP SAID YES.'],
+  '9-12': ['CHECK WITH A PARENT FIRST', 'VIG WILL COST REAL MONEY LATER', '($4.59 A MONTH). TODAY IT COSTS', VIG_PRICE + ' BOUND BUCKS.'],
+  '12-16': ['HEADS UP', 'VIG BECOMES A PAID SUBSCRIPTION', 'LATER ($4.59 A MONTH).', 'TODAY: ' + VIG_PRICE + ' BB, YOURS FOREVER.'],
+  '17+': ['BEFORE YOU JOIN', 'VIG BECOMES A PAID SUBSCRIPTION', 'LATER ($4.59 A MONTH).', 'TODAY: ' + VIG_PRICE + ' BB, YOURS FOREVER.'],
+};
+const ageKid = () => SET.age === '0-9' || SET.age === '9-12';
+function drawVigCard(warn) {
   const c = vigCard.cv.getContext('2d'), W = 768, H = 512, vip = isVIG(); c.clearRect(0, 0, W, H);
   const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2a1640'); g.addColorStop(1, '#0c0818'); c.fillStyle = g; c.beginPath(); c.roundRect(6, 6, W - 12, H - 12, 34); c.fill(); c.strokeStyle = '#ffd447'; c.lineWidth = 10; c.stroke();
   c.textAlign = 'center'; c.fillStyle = '#ffd447'; c.font = '96px "Lilita One", system-ui, sans-serif'; c.fillText('★ VIG ★', W / 2, 108);
   c.fillStyle = '#fff'; c.font = '36px "Lilita One", system-ui, sans-serif'; c.fillText('VERY IMPORTANT GORILLA', W / 2, 156);
   c.textAlign = 'left'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillStyle = '#e9e2ff';
+  if (warn && !vip && AGE_WARN[SET.age]) { const W2 = AGE_WARN[SET.age]; c.textAlign = 'center'; c.fillStyle = '#ff7a4a'; c.font = '46px "Lilita One", system-ui, sans-serif'; c.fillText('⚠ ' + W2[0], W / 2, 222); c.fillStyle = '#fff'; c.font = '32px "Lilita One", system-ui, sans-serif'; W2.slice(1).forEach((l2, i) => c.fillText(l2, W / 2, 272 + i * 42)); c.fillStyle = '#ffd447'; c.font = '30px "Lilita One", system-ui, sans-serif'; c.fillText(ageKid() && VIG.step === 1 ? 'GROWN-UP SAID YES? PRESS AGAIN' : 'PRESS THE GOLD BUTTON AGAIN TO JOIN', W / 2, 470); vigCard.tex.needsUpdate = true; return; }
   ['✦ THE VIG LOUNGE (gold portal)', '✦ SKINS: ROBOT, CLAUDE + 7 BOSSES', '✦ HAND TRACKING (no controllers)', '✦ GOLD NAME TAG + VIG CROWN'].forEach((l, i) => c.fillText(l, 70, 215 + i * 46));
   c.textAlign = 'center';
   if (vip) { c.fillStyle = '#6dff9a'; c.font = '44px "Lilita One", system-ui, sans-serif'; c.fillText("YOU'RE VIG! FOREVER.", W / 2, 455); }
@@ -5438,9 +5472,12 @@ drawVigCard();
 function tryJoinVIG() {
   if (VIG.cd > 0) return; VIG.cd = 0.8;
   if (isVIG()) { toast("YOU'RE ALREADY VIG ★ STEP INTO THE GOLD PORTAL"); return; }
-  if (VIG.offerT <= 0) { VIG.offerT = 8; toast('JOIN VIG FOR ' + VIG_PRICE + ' BB? PRESS THE GOLD BUTTON AGAIN', 3); sfx(660, 880, 0.12, 'triangle', 0.1); return; }
+  if (!SET.age) { toast('PICK YOUR MODE FIRST: COMPUTAH > AGE MODE', 3); sfx(220, 160, 0.2, 'square', 0.1); return; }
+  if (VIG.offerT <= 0) VIG.step = 0;
+  const need = ageKid() ? 2 : 1; // younger players: read the warning, then confirm a grown-up said yes, then join
+  if (VIG.step < need) { VIG.step++; VIG.offerT = 12; drawVigCard(true); toast(VIG.step === 1 ? '⚠ ' + AGE_WARN[SET.age][0] + ' • READ THE GOLD SIGN' : 'ONE MORE PRESS TO JOIN VIG', 3); sfx(660, 880, 0.12, 'triangle', 0.1); return; }
   if (bananas < VIG_PRICE) { toast('VIG COSTS ' + VIG_PRICE + ' BB • YOU HAVE ' + bananas + ' (QUESTS + BOSSES PAY BB)', 3); sfx(220, 160, 0.2, 'square', 0.1); return; }
-  addBananas(-VIG_PRICE); try { localStorage.setItem('darkbound-vig', '1'); } catch (e) { } VIG.offerT = 0;
+  addBananas(-VIG_PRICE); try { localStorage.setItem('darkbound-vig', '1'); } catch (e) { } VIG.offerT = 0; VIG.step = 0;
   banner('★ YOU ARE VIG ★', 'VERY IMPORTANT GORILLA • YOURS FOREVER', 3.5, '#ffd447');
   [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => sfx(f, f, 0.22, 'triangle', 0.14, i * 0.08)); for (let i = 0; i < 4; i++) setTimeout(() => burst(vigPortal.position, 0xffd447), i * 250);
   me.setName(myTag()); drawVigCard(); checkCosUnlocks(); redrawVigPortalSign();
@@ -5488,7 +5525,7 @@ if (isVIG() && skinOk(VIG.skin)) me.setSkin(VIG.skin);
 // ---- hand tracking: a pinch works like the grip (VIG perk) ----
 const HANDTRACK = [0, 1].map(i => { const hd = renderer.xr.getHand(i); rig.add(hd); return hd; });
 function updateVIG(dt, t) {
-  VIG.cd -= dt; VIG.offerT -= dt;
+  VIG.cd -= dt; if (VIG.offerT > 0 && (VIG.offerT -= dt) <= 0) { VIG.step = 0; drawVigCard(); }
   vigPortal.rotation.y = -Math.PI / 2; vigPortal.children[1].material.opacity = 0.4 + Math.sin(t * 3) * 0.2; vigKnob.position.y = 0.99 + (VIG.offerT > 0 ? Math.sin(t * 10) * 0.02 : 0);
   const near = Math.hypot(myPose.h.x - 10, myPose.h.z - 5.5) < 4;
   if (near && renderer.xr.isPresenting) for (const h of hands) if (h.source && h.last.distanceTo(_vgv.set(11.4, 1.0, 4.4)) < 0.35) tryJoinVIG();
@@ -5514,6 +5551,7 @@ function extraPokeables() {
   const l = [], h = myPose.h, add = g => g.traverse(o => { if (o.isMesh && o.userData.poke) l.push(o); });
   if (Math.abs(h.x - PGX) < 24 && Math.abs(h.z - PGZ) < 24) { for (const P of PROPS) add(P.g); for (const d of DRUMS) add(d.g); for (const b of MARIMBA) l.push(b.m); }
   if (Math.hypot(h.x - 11, h.z - 5) < 8) add(vigBtn);
+  if (INTRO.active) for (const P of agePads) l.push(P.pad, P.sign);
   if (Math.abs(h.x - VGX) < 16 && Math.abs(h.z - VGZ) < 16) for (const s of SKIN_BAR) add(s.ped);
   return l;
 }
@@ -5557,6 +5595,52 @@ function updateGamepad(dt) {
 for (const gp of navigator.getGamepads?.() || []) if (gp && PAD.idx < 0) { PAD.idx = gp.index; PAD.kind = padKind(gp.id); const el = document.getElementById('padhelp'); if (el) { el.innerHTML = padHelpHtml(PAD.kind); el.hidden = false; } }
 if (CONSOLE) setTimeout(() => toast(CONSOLE + (CONSOLE_DISC ? ' • DISC' : '') + ' DETECTED • PLAY WITH YOUR CONTROLLER' + (LOWGFX ? ' • FAST GRAPHICS ON' : ''), 3.5), 1500);
 
+// ================= COMING SOON THEATER: a live trailer for the rework, flying through the game =================
+const THEATER = { shot: 0, t: 0, renderT: 0, cv: document.createElement('canvas'), shown: true };
+const trailerRT = new THREE.WebGLRenderTarget(640, 360); trailerRT.texture.colorSpace = THREE.SRGBColorSpace;
+const trailerCam = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 400);
+const theaterScreen = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.16), new THREE.MeshBasicMaterial({ map: trailerRT.texture })); theaterScreen.position.set(TX - 5.57, 2.7, TZ); theaterScreen.rotation.y = Math.PI / 2; scene.add(theaterScreen);
+THEATER.cv.width = 1024; THEATER.cv.height = 576; THEATER.tex = new THREE.CanvasTexture(THEATER.cv); THEATER.tex.colorSpace = THREE.SRGBColorSpace;
+const theaterOver = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.16), new THREE.MeshBasicMaterial({ map: THEATER.tex, transparent: true })); theaterOver.position.set(TX - 5.55, 2.7, TZ); theaterOver.rotation.y = Math.PI / 2; scene.add(theaterOver);
+part(scene, new THREE.BoxGeometry(0.06, 4.5, 7.8), toon(0xffc83d, 0.3), [TX - 5.61, 2.7, TZ], null, 0.01);
+{ const beam = new THREE.Mesh(new THREE.ConeGeometry(2.4, 10.6, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); beam.rotation.z = -Math.PI / 2; beam.position.set(TX + 0.2, 2.9, TZ); scene.add(beam); }
+{ // the marquee over the entrance
+  const lab = labelTex(null, 1024, 260); const c = lab.cv.getContext('2d'); c.clearRect(0, 0, 1024, 260); c.fillStyle = '#1a0b2e'; c.beginPath(); c.roundRect(6, 6, 1012, 248, 30); c.fill(); c.strokeStyle = '#ffd447'; c.lineWidth = 10; c.stroke();
+  c.fillStyle = '#ffd447'; for (let i = 0; i < 30; i++) { c.beginPath(); c.arc(30 + i * 33.5, 22, 7, 0, 7); c.fill(); c.beginPath(); c.arc(30 + i * 33.5, 238, 7, 0, 7); c.fill(); }
+  c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = '104px "Lilita One", system-ui, sans-serif'; c.fillText('COMING SOON', 512, 140); c.fillStyle = '#ff7ab8'; c.font = '40px "Lilita One", system-ui, sans-serif'; c.fillText('A SNEAK PEEK AT DARKBOUND: THE REWORK', 512, 200); lab.tex.needsUpdate = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.32), new THREE.MeshBasicMaterial({ map: lab.tex, transparent: true, side: THREE.DoubleSide })); m.position.set(TX + 6.15, 3.9, TZ); m.rotation.y = Math.PI / 2; scene.add(m);
+}
+// the trailer: slow camera moves through the game, each with a title card
+const SHOTS = [
+  { a: [28, 20, 30], b: [-28, 20, 30], look: [0, 2, 0], big: 'DARKBOUND', small: 'THE REWORK' },
+  { a: [CH_MAPS[3].start.x + 10, 9, CH_MAPS[3].start.z - 6], b: [CH_MAPS[3].start.x - 6, 7, CH_MAPS[3].start.z + 40], look: [CH_MAPS[3].start.x, 1, CH_MAPS[3].start.z + 70], big: 'A WHOLE NEW GAME', small: 'BUILT FROM THE GROUND UP' },
+  { a: [CH_MAPS[6].arena[0] + 16, 10, CH_MAPS[6].arena[1] + 14], b: [CH_MAPS[6].arena[0] - 16, 8, CH_MAPS[6].arena[1] + 12], look: [CH_MAPS[6].arena[0], 1, CH_MAPS[6].arena[1]], big: 'BIGGER WORLDS', small: 'A DARKER STORY' },
+  { a: [AX + 14, 6, AZ + 14], b: [AX - 14, 9, AZ + 12], look: [AX, 1.5, AZ], big: 'NEW BOSSES', small: 'NEW BATTLES' },
+  { a: [CH_MAPS[4].start.x - 12, 8, CH_MAPS[4].start.z + 20], b: [CH_MAPS[4].start.x + 10, 6, CH_MAPS[4].start.z + 60], look: [CH_MAPS[4].start.x, 2, CH_MAPS[4].start.z + 90], big: 'MADE BY A REAL TEAM', small: 'OF HUMANS' },
+  { a: [B3X + 14, 5, B3Z + 14], b: [B3X - 12, 7, B3Z + 12], look: [B3X, 1, B3Z], big: 'COMING LATER...', small: 'STAY TUNED' },
+].map(sh => ({ ...sh, a: new THREE.Vector3(...sh.a), b: new THREE.Vector3(...sh.b), look: new THREE.Vector3(...sh.look) }));
+const SHOT_LEN = 6;
+function drawTrailerCard(sh, k) {
+  const c = THEATER.cv.getContext('2d'), W = 1024, H = 576; c.clearRect(0, 0, W, H);
+  const fade = Math.min(1, k * 4, (1 - k) * 4); // fade in and out of each shot
+  c.fillStyle = 'rgba(0,0,0,' + (1 - fade) + ')'; c.fillRect(0, 0, W, H);
+  const g = c.createLinearGradient(0, H * 0.55, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.7)'); c.fillStyle = g; c.fillRect(0, H * 0.55, W, H * 0.45);
+  c.globalAlpha = Math.max(0, Math.min(1, (k - 0.12) * 5)) * fade; c.textAlign = 'center'; c.shadowColor = '#9b5cff'; c.shadowBlur = 24;
+  c.fillStyle = '#fff'; c.font = '86px "Lilita One", system-ui, sans-serif'; c.fillText(sh.big, W / 2, H - 120); c.shadowBlur = 0;
+  c.fillStyle = '#ffd447'; c.font = '40px "Lilita One", system-ui, sans-serif'; c.fillText(sh.small, W / 2, H - 64); c.globalAlpha = 1;
+  c.fillStyle = 'rgba(0,0,0,1)'; c.fillRect(0, 0, W, 44); c.fillRect(0, H - 20, W, 20); // letterbox
+  THEATER.tex.needsUpdate = true;
+}
+function updateTheater(dt) {
+  const near = Math.abs(myPose.h.x - TX) < 22 && Math.abs(myPose.h.z - TZ) < 22;
+  if (near !== THEATER.shown) { THEATER.shown = near; theaterScreen.visible = theaterOver.visible = near; }
+  if (!near) return;
+  THEATER.t += dt; if (THEATER.t > SHOT_LEN) { THEATER.t = 0; THEATER.shot = (THEATER.shot + 1) % SHOTS.length; }
+  if ((THEATER.renderT -= dt) > 0) return; THEATER.renderT = LOWGFX ? 1 / 8 : 1 / 20;
+  const sh = SHOTS[THEATER.shot], k = THEATER.t / SHOT_LEN, e = k * k * (3 - 2 * k);
+  trailerCam.position.lerpVectors(sh.a, sh.b, e); trailerCam.lookAt(sh.look);
+  renderFrom(trailerCam, trailerRT, true); drawTrailerCard(sh, k);
+}
 // ================= MUSIC (all original songs, played live by a tiny chiptune band: lead, arp, bass, drums) =================
 // each token is an eighth note: a note like c5 / f#4 / bb3, "-" holds the last note, "." is a rest. "|" is just for reading.
 const SONGS = {
@@ -5668,7 +5752,7 @@ const SAVE_STARS = [
     s.g = g; s.glow = glow; s.cd = 0;
   }
 }
-if (window.__boss) Object.assign(window.__boss, { LOWGFX, PAD, updateGamepad: d => updateGamepad(d), updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
+if (window.__boss) Object.assign(window.__boss, { THEATER, updateTheater: d => updateTheater(d), chooseAge, agePads, AGE_WARN, LOWGFX, PAD, updateGamepad: d => updateGamepad(d), updateVRPlay: (a, b) => updateVRPlay(a, b), updateVIG: (a, b) => updateVIG(a, b), HIN, PROPS, DRUMS, MARIMBA, HOOP, MUSH, WATCH, SKINS, VIG, isVIG, tryJoinVIG, wearSkin, hudAnchor, drawWatch, camRec, toggleCamRec, say: (l, f) => say(l, f), updateAllies: (a, b) => updateAllies(a, b), MINI_OF, ALLY, miniWon: () => miniWon(), updateSB, CH_MAPS, enterStory, goHomeFromStory, CR, MUSIC, SONGS, musicArea, SAVE_STARS, updateMusic: dt => updateMusic(dt) });
 function updateSaveStars(dt, t) {
   for (const s of SAVE_STARS) {
     s.cd -= dt; s.g.rotation.y = t * 1.4; s.g.position.y = s.p[1] + Math.sin(t * 2 + s.p[0]) * 0.08;
@@ -5773,7 +5857,7 @@ renderer.setAnimationLoop(() => {
   for (let i = 0; i < PN; i++) { let y = pPos[i * 3 + 1] + dt * (1.5 + (i % 7) * 0.3); if (y > 30) y -= 30; pPos[i * 3 + 1] = y; }
   pGeo.attributes.position.needsUpdate = true;
   for (const m of floaters.children) { m.rotation.y += m.userData.spin * dt; m.position.y += Math.sin(t * 0.4 + m.userData.bob) * 0.15 * dt; }
-  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t); updateAllies(dt, t); updateVRPlay(dt, t); updateVIG(dt, t); updateGamepad(dt);
+  updateWorldLife(dt, t); updateMusic(dt); updateSaveStars(dt, t); updateChapterRoom(dt, t); updateAllies(dt, t); updateVRPlay(dt, t); updateVIG(dt, t); updateGamepad(dt); updateTheater(dt);
   beacon.rotation.y += dt; beacon.position.y = 17.5 + Math.sin(t * 1.5) * 0.3;
 
   if (SPECTATE) renderSpectator(t);
